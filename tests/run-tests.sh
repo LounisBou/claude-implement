@@ -188,6 +188,36 @@ check "the loop states the gate exit code" "1" \
 check "no phase bash block dispatches a subagent" "" \
   "$(awk '/^```bash/ { b = 1; next } /^```/ { b = 0 } b && /(Task\(|subagent)/ { print NR }' "$PHASE_DOC")"
 
+echo "== feature =="
+FEATURE_DOC="$ROOT/skills/feature/SKILL.md"
+
+# The spec fixes the two superpowers skills this one stands on. Paraphrasing
+# either of them is the failure mode the whole plugin exists to avoid.
+for ref in superpowers:brainstorming superpowers:writing-plans; do
+  check "feature invokes $ref" "1" \
+    "$(grep -c "$ref" "$FEATURE_DOC" 2>/dev/null | awk '{print ($1 >= 1) ? 1 : 0}')"
+done
+
+# One question, asked once, carrying four proposed values. Three of them asked and
+# the fourth assumed is the quiet failure: the user confirms what they were shown
+# and the unshown value lands in the state file unread.
+check "feature's one question carries the four values" "4" \
+  "$(awk "$FENCE_TRACK"'
+     !f && /^## .*The one question/ { in_q = 1; next }
+     !f && /^## / { in_q = 0 }
+     in_q && /codename/ { seen["codename"] = 1 }
+     in_q && /title/ { seen["title"] = 1 }
+     in_q && /branch/ { seen["branch"] = 1 }
+     in_q && /bump/ { seen["bump"] = 1 }
+     END { total = 0; for (k in seen) total++; print total }' "$FEATURE_DOC")"
+
+# The state table is the contract phase and close parse. It is shown in a fence so
+# the writer copies it rather than inventing a spelling of its own.
+check "feature gives the state table its header inside a fence" "1" \
+  "$(awk "$FENCE_TRACK"'
+     f && /^\| phase \| title \| status \| milestone \|/ { hits++ }
+     END { print (hits > 0) ? 1 : 0 }' "$FEATURE_DOC")"
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

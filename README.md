@@ -38,21 +38,56 @@ the check.
 
 ```
 docs/features/<codename>/
-  DESIGN.md              the spec brainstorming produced (superpowers:brainstorming, architectural path)
+  DESIGN.md              the spec the brainstorm produced (superpowers:brainstorming, architectural path)
   plan/INDEX.md          the phase list (superpowers:writing-plans)
   plan/phase-NN-<slug>.md  one file per phase: sub-phases, files, tests, definition of done
-  IMPLEMENTATION.md      the state: codename, title, branch, bump type, artifacts mode, base commit, phases table
+  IMPLEMENTATION.md      the state, and the only source of truth for progress
 ROADMAP.md               at the repository root: one line per prepared feature
 .implement.json          at the repository root, optional: {"artifacts": "local" | "committed"}
 ```
 
-**Local mode (default).** `docs/features/` must be ignored (`git check-ignore -q
-docs/features`); nothing under it, and no `ROADMAP.md`, is ever staged. A closed
-feature's own directory is deleted at close.
+`/implement:feature` writes all of it; `/implement:phase` and `/implement:close`
+read it. `IMPLEMENTATION.md` carries six header lines — codename, title, branch,
+bump type, artifacts mode, and the commit the branch was cut from — then one row
+per phase:
 
-**Committed mode** (`.implement.json` says `{"artifacts": "committed"}`): the
-directory must not be ignored; the artifacts join the milestone commit of each
-phase and the close commit; close deletes nothing.
+```
+| phase | title | status | milestone |
+|---|---|---|---|
+| 01 | the first phase | done | 82525e4 |
+| 02 | the second one | doing |  |
+```
+
+Status is `todo`, `doing` or `done`, and the milestone stays empty until the phase
+is done. `/implement:phase` resumes at the first row that is not done and refuses
+to run without this file; `/implement:close` refuses while a row is not done.
+`/implement:prepare` appends `- <codename> — <title> (<bump>)` to `ROADMAP.md` and
+writes no state file, which is what makes a prepared feature recognisable.
+
+Each of the three reading commands takes `--docs <path>` naming the feature
+directory, for the case where the default — `docs/features/<codename>`, the
+codename read from the branch name — is not what should be read: a worktree does
+not see an ignored directory of the main checkout.
+
+## .implement.json
+
+Optional, at the repository root, one key:
+
+```json
+{"artifacts": "local"}
+```
+
+**Local, the default** — also what an absent file means. `docs/features/` must be
+ignored, which `/implement:feature`, `/implement:prepare`, `/implement:phase` and
+`/implement:close` verify with `git check-ignore -q docs/features` and refuse to run
+without, naming the fix. Nothing under it, and no `ROADMAP.md`, is
+ever staged; the artifacts are working notes, and a closed feature's own directory
+is deleted by `/implement:close`.
+
+**Committed** — `{"artifacts": "committed"}`. The check inverts: the directory must
+not be ignored. The design, the plan and the state travel with the code — in the
+commit that opens the feature, in one commit per finished phase, and in the closing
+commit — and nothing is deleted at close.
 
 ## CLAUDE.md
 

@@ -47,6 +47,24 @@ check "the only dependency is superpowers" "['superpowers@claude-plugins-officia
   "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["dependencies"])' "$MAN")"
 check "both commands run the preflight" "2" "$(grep -l 'scripts/preflight.sh' "$ROOT"/commands/*.md | wc -l | tr -d ' ')"
 
+echo "== preflight =="
+PF="$ROOT/scripts/preflight.sh"
+settings() { mkdir -p "$WORK/cfg"; printf '%s' "$1" > "$WORK/cfg/settings.json"; }
+pf() { env HOME="$WORK" PREFLIGHT_SETTINGS="$WORK/cfg/settings.json" PREFLIGHT_SKIP_GIT=1 bash "$PF" "$@"; }
+settings '{"enabledPlugins":{"superpowers@claude-plugins-official":true}}'
+check_status "superpowers enabled passes" 0 pf
+settings '{"enabledPlugins":{"superpowers@claude-plugins-official":false}}'
+check_status "superpowers disabled exits 10" 10 pf
+check "the failure names superpowers with a fix line" "2" "$(pf 2>&1 >/dev/null | grep -cE '^(error|fix):.*superpowers')"
+settings '{"enabledPlugins":{}}'
+check_status "superpowers absent exits 10" 10 pf
+settings '{ not json'
+check_status "malformed settings exits 10" 10 pf
+check "malformed settings is one error line and no traceback" "1 0" \
+  "$(out=$(pf 2>&1 >/dev/null); printf '%s %s' "$(printf '%s\n' "$out" | grep -c '^error:')" "$(printf '%s\n' "$out" | grep -c Traceback)")"
+settings '{"enabledPlugins":{"superpowers@claude-plugins-official":true}}'
+check_status "outside a git repository exits 13" 13 env HOME="$WORK" PREFLIGHT_SETTINGS="$WORK/cfg/settings.json" bash -c "cd '$WORK' && bash '$PF'"
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

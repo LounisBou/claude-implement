@@ -65,6 +65,60 @@ check "malformed settings is one error line and no traceback" "1 0" \
 settings '{"enabledPlugins":{"superpowers@claude-plugins-official":true}}'
 check_status "outside a git repository exits 13" 13 env HOME="$WORK" PREFLIGHT_SETTINGS="$WORK/cfg/settings.json" bash -c "cd '$WORK' && bash '$PF'"
 
+echo "== skills =="
+for skill in feature phase check close prepare; do
+  doc="$ROOT/skills/$skill/SKILL.md"
+  check "$skill frontmatter names itself" "$skill" "$(awk '/^name:/{print $2; exit}' "$doc" 2>/dev/null)"
+  check "$skill runs the preflight first" "1" "$(grep -c 'scripts/preflight.sh' "$doc" 2>/dev/null || echo 0)"
+  check "$skill hard-codes no language" "" "$(grep -o 'French' "$doc" 2>/dev/null || true)"
+  check "$skill has no accented character" "" "$(grep -o '[àâäéèêëïîôöùûüçÀÂÄÉÈÊËÏÎÔÖÙÛÜÇœŒ]' "$doc" 2>/dev/null | sort -u | tr '\n' ',' || true)"
+  check "$skill has no common French words" "" "$(grep -Eiow 'vous|nous|avec|chemin|fichier|sont|une|titre' "$doc" 2>/dev/null | sort -u | tr '\n' ',' || true)"
+  check "$skill reaches no other plugin's cache" "" "$(grep -o 'plugins/cache' "$doc" 2>/dev/null || true)"
+  check "$skill never pushes, merges or calls GitHub" "" \
+    "$(awk '/^```bash/{f=1;next} /^```/{f=0} f && /(git push|gh |curl |git merge)/{print NR}' "$doc" 2>/dev/null)"
+done
+# Each bash block is its own shell.
+for skill in feature phase check close prepare; do
+  unresolved=$(python3 - "$ROOT/skills/$skill/SKILL.md" <<'PYFENCE'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read().split("\n")
+names = ("CODENAME", "DOCS", "BRANCH", "MAIN")
+bad, block, start = [], None, 0
+for i, line in enumerate(text, 1):
+    if block is None:
+        if line.startswith("```bash"):
+            block, start = [], i
+    elif line.startswith("```"):
+        body = "\n".join(block)
+        for name in names:
+            if re.search(r"\$\{?%s\b" % name, body) and not re.search(r"^\s*%s=" % name, body, re.M):
+                bad.append("%d:%s" % (start, name))
+        block = None
+    else:
+        block.append(line)
+print(" ".join(bad))
+PYFENCE
+)
+  check "every $skill bash block derives what it uses" "" "$unresolved"
+done
+# Contract: every superpowers:<name> exists in the installed plugin, every implement:<name> is one of ours.
+# Deviation from the plan's one-liner: each key of "plugins" in installed_plugins.json maps to a LIST of
+# per-scope install records (a plugin can be installed at more than one scope), not to a single record
+# object, confirmed by reading ~/.claude/plugins/installed_plugins.json (e.g. commit-commands@... has three
+# entries). p[0] in the plan's original form is therefore that list, never a dict, so "isinstance(p[0],dict)"
+# is always False and the resolution always fails. Flattened to iterate every record of every matching key.
+SP_ROOT="${SUPERPOWERS_ROOT:-$(python3 -c 'import json,os; d=json.load(open(os.path.expanduser("~/.claude/plugins/installed_plugins.json"))); recs=[r for k,v in d.get("plugins",{}).items() if k.startswith("superpowers@") for r in v]; print(recs[0]["installPath"] if recs and isinstance(recs[0],dict) and "installPath" in recs[0] else "")' 2>/dev/null)}"
+check "the superpowers plugin resolves" "1" "$([ -d "$SP_ROOT/skills" ] && echo 1 || echo 0)"
+phantoms=$(for skill in feature phase check close prepare; do
+  grep -oE '(superpowers|implement):[a-z-]+' "$ROOT/skills/$skill/SKILL.md" 2>/dev/null | sort -u | while read -r ref; do
+    case "$ref" in
+      (superpowers:*) [ -d "$SP_ROOT/skills/${ref#superpowers:}" ] || printf '%s:%s ' "$skill" "$ref" ;;
+      (implement:*)   [ -d "$ROOT/skills/${ref#implement:}" ] || printf '%s:%s ' "$skill" "$ref" ;;
+    esac
+  done
+done)
+check "every skill reference names something real" "" "$phantoms"
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -7,7 +7,190 @@ description: Use to run the plan's phases, continue a feature already branched a
 
 ## Overview
 
-Runs the plan's remaining phases in order, or one phase by number, each sub-phase gated by tests, the project's own check and test commands, and a self-check against the plan.
+Runs every phase of the plan that is not done, in order, without pausing between
+them; given a number, that phase only, then stops and reports. Each sub-phase is
+written here, in this session: failing tests first, the code, the project's own
+gate, one commit, then a check of what the commit range produced. Read-only search
+subagents are welcome; the work itself is never handed to one.
 
 **Preflight:** run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh"` as the first
 action. A non-zero exit stops the skill: print its output verbatim and do nothing else.
+
+**Announce at start:** "I am using implement:phase to run the plan." Speak to the
+user in the user's language; write every artifact in English.
+
+---
+
+## Inputs
+
+`implement:phase [N] [--docs <path>]`
+
+- `N` — one phase, by its number in the state table. Without it: every phase not
+  done, in order, to the end of the plan.
+- `--docs <path>` — the feature directory. When it is given, `export
+  DOCS_OVERRIDE=<path>` before running the block below; without it the path is
+  derived from the branch name (`feat/<codename>` or `fix/<codename>`). A worktree
+  does not see an ignored directory of the main checkout: whoever starts the run
+  there gives the path.
+
+```bash
+# Each bash block is its own shell; derive rather than inherit.
+BRANCH=$(git branch --show-current) || exit 1
+CODENAME=${BRANCH#*/}
+DOCS=${DOCS_OVERRIDE:-docs/features/$CODENAME}
+[ -f "$DOCS/IMPLEMENTATION.md" ] || { echo "no IMPLEMENTATION.md under $DOCS: run implement:feature first, or pass --docs <path>"; exit 1; }
+MODE=$(python3 -c 'import json,os; print(json.load(open(".implement.json")).get("artifacts","local") if os.path.exists(".implement.json") else "local")')
+[ "$MODE" = committed ] || git check-ignore -q docs/features || { echo "docs/features is not ignored: add it to the excludes, or set artifacts to committed in .implement.json"; exit 1; }
+echo "$CODENAME on $BRANCH, artifacts $MODE, state $DOCS/IMPLEMENTATION.md"
+```
+
+`IMPLEMENTATION.md` is the only source of truth for progress. Its header holds the
+codename, the title, the branch, the bump type, the artifacts mode and the base
+commit; its table is one row per phase:
+
+```
+| phase | title | status | milestone |
+|---|---|---|---|
+| 01 | the skeleton | done | 82525e4 |
+| 02 | the core | doing |  |
+| 03 | the cycle | todo |  |
+```
+
+Status is `todo`, `doing` or `done`; the milestone is empty until the phase is done.
+
+---
+
+## The loop
+
+Read the table. The phase to run is `N` when a number was given, else the first row
+whose status is not `done`. Mark that row `doing` before anything else, so an
+interrupted run resumes on the right phase. Read its file,
+`<docs>/plan/phase-NN-<slug>.md`, in full before writing a line: it names the
+sub-phases, the files, the tests and the definition of done.
+
+Then, for each sub-phase of that file, in its order:
+
+1. **Tests first.** `superpowers:test-driven-development`: the failing test is
+   written and seen to fail before the code that makes it pass. A test that has
+   never been red proves nothing.
+2. **The code.** Only what the sub-phase names. A file the sub-phase does not name
+   is scope drift, and drift is a decision, not an initiative: see Stops.
+3. **The gate.** The commands the repository names, in this order of discovery: the
+   check and test commands of its `CLAUDE.md`, else those of its `CONTRIBUTING.md`,
+   else the tests covering the files just touched. Run each one synchronously, in
+   the call that waits for it, and state it with its exit code. At most two fixes:
+   a third red run stops the phase `BLOCKED`.
+4. **The commit.** Read the convention rather than impose one:
+
+```bash
+# Each bash block is its own shell; derive rather than inherit.
+git log --format=%s -10
+```
+
+   A conventional prefix in those ten lines means the sub-phase uses one; plain
+   imperative subjects mean plain imperative prose. A body only when the reason is
+   not obvious from the subject. No trailer of any kind, whatever the convention.
+
+5. **The check.** `implement:check <sub-phase base>..HEAD --phase <N>`, where the
+   base is the commit the sub-phase started from. A `FAIL` is repaired inline and
+   re-checked once. A second `FAIL` stops the phase `BLOCKED`, with the table and
+   the verdict quoted in the report.
+
+When the last sub-phase is green, close the phase: set its row to `done` with the
+milestone, which is the last commit of the phase.
+
+```bash
+# Each bash block is its own shell; derive rather than inherit.
+BRANCH=$(git branch --show-current) || exit 1
+CODENAME=${BRANCH#*/}
+DOCS=${DOCS_OVERRIDE:-docs/features/$CODENAME}
+MODE=$(python3 -c 'import json,os; print(json.load(open(".implement.json")).get("artifacts","local") if os.path.exists(".implement.json") else "local")')
+git rev-parse --short HEAD   # the milestone to write into "$DOCS/IMPLEMENTATION.md"
+echo "artifacts $MODE"
+```
+
+In `committed` mode, and only there, the updated state and the plan travel in one
+commit `Finish phase N: <title>` after the sub-phase commits. In `local` mode the
+file is written and nothing under `docs/features/` is ever staged.
+
+Then: with `N`, stop and report that phase. Without `N`, start the next row that is
+not done, with no question and no progress narration in between. When no row is
+left, say that `implement:close` is next.
+
+---
+
+## Stops
+
+| Situation | The one line |
+|---|---|
+| No `IMPLEMENTATION.md` under the derived path | `no IMPLEMENTATION.md under <docs>: run implement:feature first, or pass --docs <path>` |
+| `docs/features` is not ignored in local mode | `docs/features is not ignored: add it to the excludes, or set artifacts to committed in .implement.json` |
+| A gate still red after two fixes | `gate red after two fixes: <command> exit <code>` — status `BLOCKED` |
+| A second `FAIL` on the same sub-phase | `check failed twice on <sub-phase>: <the failing rows>` — status `BLOCKED` |
+| The plan does not settle a scope question | the question in one line, then wait — status `NEEDS_DECISION` |
+| An outward-facing or irreversible action is needed | name it and wait; it is never taken here |
+
+Each stop asks once, in one line, and waits. No progress narration between
+sub-phases, and no question whose answer is already in the plan.
+
+---
+
+## Report
+
+Named sections, in this order, one report per phase:
+
+```
+branch:    feat/<codename>, base <sha>
+commits:   <short sha> <subject>   (one line per commit of the phase)
+files:     <path>   (one line per file the phase touched)
+gate:      <command> exit <code>   (one line per command, every run)
+checks:    <sub-phase> PASS | FAIL: <rows>   (one line per implement:check run)
+deviations: what departs from the plan file, and the line that justified it
+open questions: what the plan does not settle, one line each
+status:    DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_DECISION
+```
+
+`DONE` when every sub-phase is green and its check passed. `DONE_WITH_CONCERNS`
+when a deviation was taken and is named. `BLOCKED` on a red gate or a twice-failed
+check. `NEEDS_DECISION` on a scope question the plan does not answer.
+
+---
+
+## The Iron Rule
+
+```
+NEVER dispatch a subagent to write code, tests or commits: the work is written here
+NEVER push, open a pull request or merge: the cycle stops at the branch
+NEVER report an exit code that was not read, or skip the gate because the change looks small
+NEVER mark a phase done while its check is red or its gate is untested
+```
+
+Read-only search subagents are the one exception, and they read; they do not write.
+
+---
+
+## Red Flags
+
+| Thought | Reality |
+|---|---|
+| "The change is small, the gate can wait" | An unrun gate is a red gate you have not seen yet. Run it. |
+| "The test passes, no need to see it fail first" | A test never seen red proves the code, not the test. Write it failing. |
+| "This neighbouring file obviously needs the same fix" | Drift. The plan names the files; anything else is a decision to bring back. |
+| "The check is nearly green, the last row is cosmetic" | Rows are not weighted here. Repair it or report it, do not round it up. |
+| "I will summarise the phases at the end" | The report is per phase, written when the phase closes. Later means never. |
+
+---
+
+## Quick Reference
+
+```
+1. Preflight, then derive BRANCH, CODENAME, DOCS, MODE (--docs exports DOCS_OVERRIDE)
+2. Read IMPLEMENTATION.md; take phase N, else the first row not done; mark it doing
+3. Read plan/phase-NN-<slug>.md in full
+4. Per sub-phase: failing test, code, gate with exit codes (two fixes at most)
+5. Commit in the convention read from git log --format=%s -10, no trailer
+6. implement:check <base>..HEAD --phase N; one inline fix, a second FAIL stops
+7. End of phase: row done + milestone sha; in committed mode one commit carries it
+8. With N: stop and report. Without: the next row, no pause, no narration
+9. No row left: implement:close is next
+```

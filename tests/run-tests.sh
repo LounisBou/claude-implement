@@ -154,6 +154,40 @@ check "check says in its overview that it edits nothing" "1" \
      in_ov && /(edits nothing|never edits)/ { hits++ }
      END { print (hits > 0) ? 1 : 0 }' "$CHECK_DOC")"
 
+echo "== phase =="
+PHASE_DOC="$ROOT/skills/phase/SKILL.md"
+
+# The four NEVER lines are the whole of what this skill refuses. Three of them
+# would still read as a complete rule, which is why the count is the check and
+# not the presence of the fence.
+check "phase's iron rule holds four NEVER lines" "4" \
+  "$(awk '/^## The Iron Rule$/ { in_rule = 1; next }
+          /^## / { in_rule = 0 }
+          in_rule && /^NEVER / { nevers++ }
+          END { print nevers + 0 }' "$PHASE_DOC")"
+
+# The two skills the loop hands its work to. The contract check above proves the
+# directories exist; here they are proved to be invoked at all.
+for ref in implement:check superpowers:test-driven-development; do
+  check "phase invokes $ref" "1" \
+    "$(grep -c "$ref" "$PHASE_DOC" 2>/dev/null | awk '{print ($1 >= 1) ? 1 : 0}')"
+done
+
+# A gate whose result is not read is not a gate. The loop states each command with
+# its exit code, so a transcript tells a green run from a red one without trusting
+# the summary written over it.
+check "the loop states the gate exit code" "1" \
+  "$(awk "$FENCE_TRACK"'
+     !f && /^## The loop$/ { in_loop = 1; next }
+     !f && /^## / { in_loop = 0 }
+     in_loop && /exit code/ { seen++ }
+     END { print (seen > 0) ? 1 : 0 }' "$PHASE_DOC")"
+
+# The work is written here, in this session, or it is written by nobody who read
+# the plan. A dispatch hidden in a copyable block is the one that gets run.
+check "no phase bash block dispatches a subagent" "" \
+  "$(awk '/^```bash/ { b = 1; next } /^```/ { b = 0 } b && /(Task\(|subagent)/ { print NR }' "$PHASE_DOC")"
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

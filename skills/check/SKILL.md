@@ -41,10 +41,16 @@ rule for the work this skill reads.
 - `<base>..<head>` — the range under review. Required: without it there is nothing
   to read. `HEAD` on both sides of a sub-phase is the common case.
 - `--phase N` — the phase whose file is the reference for checks 3, 5 and 7. Without
-  it, the reference is every phase file the range touches.
-- `--docs <path>` — the feature directory. When it is given, `export
-  DOCS_OVERRIDE=<path>` before running the block below; without it the path is
-  derived from the branch name (`feat/<codename>` or `fix/<codename>`).
+  it, the reference is every phase file the range touches. `N` is written on two
+  digits everywhere it is interpolated: `--phase 3` reads row `03` and
+  `plan/phase-03-*.md`.
+- `--docs <path>` — the feature directory. Without it the path is derived from the
+  branch name (`feat/<codename>` or `fix/<codename>`).
+
+Two values travel by the environment rather than by a positional argument, because
+each bash block below is its own shell and inherits nothing from the one before it:
+`export RANGE=<base>..<head>` before the blocks below, and, when `--docs <path>` was
+given, `export DOCS_OVERRIDE=<path>` before EVERY block below, not only the first.
 
 ```bash
 # Each bash block is its own shell; derive rather than inherit.
@@ -78,7 +84,8 @@ prose disagrees with what follows it, or when the text ends on an unclosed fence
 
 ```bash
 # Each bash block is its own shell; derive rather than inherit.
-RANGE=$1
+RANGE=${RANGE:-}
+[ -n "$RANGE" ] || { echo "give me a range: implement:check <base>..<head>"; exit 1; }
 git log --format='%h %s' "$RANGE"
 git diff --stat "$RANGE"
 git diff --name-only "$RANGE"
@@ -130,6 +137,9 @@ stated spelling. Quote the design line and the line of the diff that answers it.
 
 ## Report
 
+This skill's report is its table, its verdict line and its status; the named
+sections of the other four do not apply here.
+
 One row per verification, the evidence in the row, then the verdict and the status.
 
 ```
@@ -172,7 +182,8 @@ never asks whether it should continue.
 ## Quick Reference
 
 ```
-1. Preflight, then derive BRANCH, CODENAME, DOCS (--docs exports DOCS_OVERRIDE)
+1. Preflight, then export RANGE; derive BRANCH, CODENAME, DOCS (--docs exports
+   DOCS_OVERRIDE)
 2. Read the plan file of the phase and DESIGN.md
 3. 1 truncation   — the delivery ends on the item it announces
 4. 2 git range    — log, diff --stat, diff --name-only against what is claimed

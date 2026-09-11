@@ -37,11 +37,22 @@ NEVER stage or commit anything under docs/features in local mode
 MAIN=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##'); MAIN=${MAIN:-$(git branch --show-current)}
 BRANCH=$(git branch --show-current) || exit 1
 [ "$BRANCH" = "$MAIN" ] || { echo "start from $MAIN, not from $BRANCH"; exit 1; }
-[ -z "$(git status --porcelain)" ] || { echo "the tree is not clean"; exit 1; }
+[ -z "$(git status --porcelain -- . ':!docs/features' ':!ROADMAP.md')" ] || { echo "the tree is not clean"; exit 1; }
 MODE=$(python3 -c 'import json,os; print(json.load(open(".implement.json")).get("artifacts","local") if os.path.exists(".implement.json") else "local")')
-[ "$MODE" = committed ] || git check-ignore -q docs/features || { echo "docs/features is not ignored: add it to the excludes, or set artifacts to committed in .implement.json"; exit 1; }
+if [ "$MODE" = committed ]; then
+  if git check-ignore -q docs/features || git check-ignore -q ROADMAP.md; then
+    echo "docs/features and ROADMAP.md must not be ignored in committed mode"; exit 1
+  fi
+elif ! git check-ignore -q docs/features || ! git check-ignore -q ROADMAP.md; then
+  echo "docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json"; exit 1
+fi
 ls -d docs/features/*/ 2>/dev/null | while read -r d; do [ -f "$d/IMPLEMENTATION.md" ] || echo "prepared: $(basename "$d")"; done
 ```
+
+The clean-tree test excludes the two artifact paths: a prepared feature leaves a
+design, a plan and a roadmap line on disk, and refusing to start over them would
+make `implement:prepare` unusable. Both paths are tested for the ignore rule one by
+one, and the test inverts in `committed` mode rather than being skipped there.
 
 The last line lists the prepared features: a directory with a design and a plan and
 no state file is one `implement:prepare` left ready.
@@ -52,8 +63,21 @@ no state file is one `implement:prepare` left ready.
 
 When the block listed one or more, show the list and ask which one to start, or
 `new` for a fresh brainstorm. **WAIT.** On a name: its design and its plan already
-exist, so skip to Step 3 with the codename it already carries and read its
-`DESIGN.md` before asking. On `new`, or on an empty list, go to Step 2.
+exist, so read its `DESIGN.md`, then go straight to Step 3 with the codename it
+already carries. Three things are skipped because their output is already on disk:
+the brainstorm of Step 2, the design write of Step 3 and the plan generation of
+Step 5. What remains is the one question, the branch, the state file, the summary.
+
+Its line in `ROADMAP.md` goes too: the roadmap lists what is prepared and not yet
+started, and this feature is being started now.
+
+```bash
+# Each bash block is its own shell; derive rather than inherit.
+CODENAME=<the prepared feature the user named>
+[ -f ROADMAP.md ] && { TRIMMED=$(mktemp); grep -v "^- $CODENAME " ROADMAP.md > "$TRIMMED"; mv "$TRIMMED" ROADMAP.md; }
+```
+
+On `new`, or on an empty list, go to Step 2.
 
 ---
 
@@ -80,8 +104,18 @@ Show the four proposed values together, in one message, and **WAIT**. The user
 confirms them or corrects any of them. Asked once: a second round of confirmation
 is the user's time spent on what they already answered.
 
-Then write the design under `docs/features/<codename>/DESIGN.md` — the codename is
-known only now, which is why the brainstorm came first.
+Then create the feature's directory and write the design into it. The codename is
+known only now, which is why the brainstorm came first, and the directory is made
+here rather than at Step 4 so the design has somewhere to land:
+
+```bash
+# Each bash block is its own shell; derive rather than inherit.
+CODENAME=<the confirmed codename>
+mkdir -p "docs/features/$CODENAME"
+```
+
+The design goes to `docs/features/<codename>/DESIGN.md`. A prepared feature skips
+this write: its design is already there, unchanged.
 
 ---
 
@@ -142,9 +176,10 @@ ls "docs/features/$CODENAME/plan"   # the rows to write, one per phase file
 ## Step 7 — Committed mode
 
 Only when the artifacts mode read in the preconditions is `committed`: one commit
-`Start <title>` carrying the design, the plan and the state file, in the convention
-read from `git log --format=%s -10`, with no trailer. In `local` mode this step does
-nothing: the files stay on disk and nothing under `docs/features/` is ever staged.
+`Start <title>` carrying the design, the plan, the state file and `ROADMAP.md`, in
+the convention read from `git log --format=%s -10`, with no trailer. In `local` mode
+this step does nothing: the files stay on disk and nothing under `docs/features/` is
+ever staged.
 
 ---
 
@@ -163,7 +198,8 @@ otherwise, and this skill never says it for them.
 |---|---|
 | The current branch is not the main one | `start from <main>, not from <branch>` |
 | The tree is dirty | `the tree is not clean` |
-| `docs/features` is not ignored in local mode | `docs/features is not ignored: add it to the excludes, or set artifacts to committed in .implement.json` |
+| `docs/features` or `ROADMAP.md` is not ignored in local mode | `docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json` |
+| Either of them is ignored in committed mode | `docs/features and ROADMAP.md must not be ignored in committed mode` |
 | The user has not answered the one question | wait; nothing is derived from a value they did not confirm |
 | The brainstorm settled no title | ask for it in one line, then wait |
 

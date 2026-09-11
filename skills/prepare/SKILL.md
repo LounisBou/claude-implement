@@ -38,9 +38,21 @@ would then be running.
 ```bash
 # Each bash block is its own shell; derive rather than inherit.
 MODE=$(python3 -c 'import json,os; print(json.load(open(".implement.json")).get("artifacts","local") if os.path.exists(".implement.json") else "local")')
-[ "$MODE" = committed ] || git check-ignore -q docs/features || { echo "docs/features is not ignored: add it to the excludes, or set artifacts to committed in .implement.json"; exit 1; }
+if [ "$MODE" = committed ]; then
+  if git check-ignore -q docs/features || git check-ignore -q ROADMAP.md; then
+    echo "docs/features and ROADMAP.md must not be ignored in committed mode"; exit 1
+  fi
+elif ! git check-ignore -q docs/features || ! git check-ignore -q ROADMAP.md; then
+  echo "docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json"; exit 1
+fi
 echo "artifacts $MODE"
 ```
+
+Both paths are tested one by one, because this skill writes to both: the design and
+the plan under `docs/features/`, one line in `ROADMAP.md` at the root. An unignored
+roadmap in `local` mode leaves a dirty tree behind, which `implement:feature` and
+`implement:close` then refuse. In `committed` mode the test inverts rather than
+being skipped: neither path may be ignored there.
 
 The branch does not matter here and is not read: whatever is checked out stays
 checked out, dirty or clean.
@@ -93,7 +105,8 @@ repository through the commit of whoever starts the feature, not through this sk
 
 | Situation | The one line |
 |---|---|
-| `docs/features` is not ignored in local mode | `docs/features is not ignored: add it to the excludes, or set artifacts to committed in .implement.json` |
+| `docs/features` or `ROADMAP.md` is not ignored in local mode | `docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json` |
+| Either of them is ignored in committed mode | `docs/features and ROADMAP.md must not be ignored in committed mode` |
 | The user has not answered the one question | wait; a codename nobody confirmed becomes a path nobody recognises |
 | A directory already holds that codename | `<codename> already exists: pick another codename, or start it with implement:feature` |
 
@@ -117,7 +130,7 @@ status:    DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_DECISION
 ## Quick Reference
 
 ```
-1. Preflight, then MODE and the check-ignore guard. The branch is not read
+1. Preflight, then MODE and the check-ignore guard on both paths. No branch is read
 2. superpowers:brainstorming, architectural path, for the design and the title
 3. The one question: codename, title, bump type. WAIT. No branch type
 4. superpowers:writing-plans on DESIGN.md, output under plan/

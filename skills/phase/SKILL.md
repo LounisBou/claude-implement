@@ -9,9 +9,9 @@ description: Use to run the plan's phases, continue a feature already branched a
 
 Runs every phase of the plan that is not done, in order, without pausing between
 them; given a number, that phase only, then stops and reports. Each sub-phase is
-written here, in this session: failing tests first, the code, the project's own
-gate, one commit, then a check of what the commit range produced. Read-only search
-subagents are welcome; the work itself is never handed to one.
+written here, inline: failing tests first, the code, the project's own gate, one
+commit, then a check of what the commit range produced. Read-only search subagents
+are welcome; the work itself is never handed to one.
 
 **Preflight:** run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh"` as the first
 action. A non-zero exit stops the skill: print its output verbatim and do nothing else.
@@ -26,12 +26,16 @@ user in the user's language; write every artifact in English.
 `implement:phase [N] [--docs <path>]`
 
 - `N` — one phase, by its number in the state table. Without it: every phase not
-  done, in order, to the end of the plan.
-- `--docs <path>` — the feature directory. When it is given, `export
-  DOCS_OVERRIDE=<path>` before running the block below; without it the path is
-  derived from the branch name (`feat/<codename>` or `fix/<codename>`). A worktree
-  does not see an ignored directory of the main checkout: whoever starts the run
-  there gives the path.
+  done, in order, to the end of the plan. `N` is written on two digits everywhere it
+  is interpolated: `implement:phase 3` reads row `03` and `plan/phase-03-*.md`.
+- `--docs <path>` — the feature directory. Without it the path is derived from the
+  branch name (`feat/<codename>` or `fix/<codename>`). A worktree does not see an
+  ignored directory of the main checkout: whoever starts the run there gives the
+  path.
+
+When `--docs <path>` was given, `export DOCS_OVERRIDE=<path>` before EVERY block
+below, not only the first: each block is its own shell and inherits nothing from the
+one before it.
 
 ```bash
 # Each bash block is its own shell; derive rather than inherit.
@@ -40,9 +44,22 @@ CODENAME=${BRANCH#*/}
 DOCS=${DOCS_OVERRIDE:-docs/features/$CODENAME}
 [ -f "$DOCS/IMPLEMENTATION.md" ] || { echo "no IMPLEMENTATION.md under $DOCS: run implement:feature first, or pass --docs <path>"; exit 1; }
 MODE=$(python3 -c 'import json,os; print(json.load(open(".implement.json")).get("artifacts","local") if os.path.exists(".implement.json") else "local")')
-[ "$MODE" = committed ] || git check-ignore -q docs/features || { echo "docs/features is not ignored: add it to the excludes, or set artifacts to committed in .implement.json"; exit 1; }
+if [ -n "${DOCS_OVERRIDE:-}" ]; then
+  echo "artifacts path given, ignore guard skipped"
+elif [ "$MODE" = committed ]; then
+  if git check-ignore -q docs/features || git check-ignore -q ROADMAP.md; then
+    echo "docs/features and ROADMAP.md must not be ignored in committed mode"; exit 1
+  fi
+elif ! git check-ignore -q docs/features || ! git check-ignore -q ROADMAP.md; then
+  echo "docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json"; exit 1
+fi
 echo "$CODENAME on $BRANCH, artifacts $MODE, state $DOCS/IMPLEMENTATION.md"
 ```
+
+Both artifact paths are tested one by one, and the test inverts in `committed` mode
+rather than being skipped there. An explicit `--docs <path>` skips it altogether:
+the caller named a directory the repository's excludes know nothing about, and took
+the responsibility for it.
 
 `IMPLEMENTATION.md` is the only source of truth for progress. Its header holds the
 codename, the title, the branch, the bump type, the artifacts mode and the base
@@ -91,10 +108,11 @@ git log --format=%s -10
    imperative subjects mean plain imperative prose. A body only when the reason is
    not obvious from the subject. No trailer of any kind, whatever the convention.
 
-5. **The check.** `implement:check <sub-phase base>..HEAD --phase <N>`, where the
-   base is the commit the sub-phase started from. A `FAIL` is repaired inline and
-   re-checked once. A second `FAIL` stops the phase `BLOCKED`, with the table and
-   the verdict quoted in the report.
+5. **The check.** `implement:check <sub-phase base>..HEAD --phase <N> --docs <path
+   when given>`, where the base is the commit the sub-phase started from and the
+   path is the one `--docs` carried, when it carried one. A `FAIL` is repaired
+   inline and re-checked once. A second `FAIL` stops the phase `BLOCKED`, with the
+   table and the verdict quoted in the report.
 
 When the last sub-phase is green, close the phase: set its row to `done` with the
 milestone, which is the last commit of the phase.
@@ -124,7 +142,8 @@ left, say that `implement:close` is next.
 | Situation | The one line |
 |---|---|
 | No `IMPLEMENTATION.md` under the derived path | `no IMPLEMENTATION.md under <docs>: run implement:feature first, or pass --docs <path>` |
-| `docs/features` is not ignored in local mode | `docs/features is not ignored: add it to the excludes, or set artifacts to committed in .implement.json` |
+| `docs/features` or `ROADMAP.md` is not ignored in local mode | `docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json` |
+| Either of them is ignored in committed mode | `docs/features and ROADMAP.md must not be ignored in committed mode` |
 | A gate still red after two fixes | `gate red after two fixes: <command> exit <code>` — status `BLOCKED` |
 | A second `FAIL` on the same sub-phase | `check failed twice on <sub-phase>: <the failing rows>` — status `BLOCKED` |
 | The plan does not settle a scope question | the question in one line, then wait — status `NEEDS_DECISION` |
@@ -140,7 +159,7 @@ sub-phases, and no question whose answer is already in the plan.
 Named sections, in this order, one report per phase:
 
 ```
-branch:    feat/<codename>, base <sha>
+branch:    <type>/<codename>, base <sha>
 commits:   <short sha> <subject>   (one line per commit of the phase)
 files:     <path>   (one line per file the phase touched)
 gate:      <command> exit <code>   (one line per command, every run)
@@ -189,7 +208,7 @@ Read-only search subagents are the one exception, and they read; they do not wri
 3. Read plan/phase-NN-<slug>.md in full
 4. Per sub-phase: failing test, code, gate with exit codes (two fixes at most)
 5. Commit in the convention read from git log --format=%s -10, no trailer
-6. implement:check <base>..HEAD --phase N; one inline fix, a second FAIL stops
+6. implement:check <base>..HEAD --phase N --docs <path when given>; one fix, then stop
 7. End of phase: row done + milestone sha; in committed mode one commit carries it
 8. With N: stop and report. Without: the next row, no pause, no narration
 9. No row left: implement:close is next

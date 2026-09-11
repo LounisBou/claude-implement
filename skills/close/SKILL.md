@@ -32,9 +32,10 @@ NEVER touch a version file when the bump type is none
 
 ## Preconditions
 
-`implement:close [--docs <path>]`. When `--docs <path>` is given, `export
-DOCS_OVERRIDE=<path>` before running the block; without it the path is derived from
-the branch name (`feat/<codename>` or `fix/<codename>`).
+`implement:close [--docs <path>]`. Without it the path is derived from the branch
+name (`feat/<codename>` or `fix/<codename>`). When `--docs <path>` was given,
+`export DOCS_OVERRIDE=<path>` before EVERY block below, not only the first: each
+block is its own shell and inherits nothing from the one before it.
 
 ```bash
 # Each bash block is its own shell; derive rather than inherit.
@@ -45,8 +46,25 @@ DOCS=${DOCS_OVERRIDE:-docs/features/$CODENAME}
 [ -z "$(git status --porcelain)" ] || { echo "the tree is not clean"; exit 1; }
 grep -qE '^\| *[0-9]+ *\|[^|]*\| *(todo|doing) *\|' "$DOCS/IMPLEMENTATION.md" && { echo "a phase is not done"; exit 1; }
 BUMP=$(grep -E '^\*\*Bump\*\*:' "$DOCS/IMPLEMENTATION.md" | sed 's/^\*\*Bump\*\*: *//')
-echo "$CODENAME ready to close, bump $BUMP"
+MODE=$(python3 -c 'import json,os; print(json.load(open(".implement.json")).get("artifacts","local") if os.path.exists(".implement.json") else "local")')
+if [ -n "${DOCS_OVERRIDE:-}" ]; then
+  echo "artifacts path given, ignore guard skipped"
+elif [ "$MODE" = committed ]; then
+  if git check-ignore -q docs/features || git check-ignore -q ROADMAP.md; then
+    echo "docs/features and ROADMAP.md must not be ignored in committed mode"; exit 1
+  fi
+elif ! git check-ignore -q docs/features || ! git check-ignore -q ROADMAP.md; then
+  echo "docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json"; exit 1
+fi
+echo "$CODENAME ready to close, bump $BUMP, artifacts $MODE"
 ```
+
+Both artifact paths are tested one by one, and the test inverts in `committed` mode
+rather than being skipped there: this skill deletes under one of them and trims the
+other, and it does that only where the repository agrees they are working notes. An
+explicit `--docs <path>` skips the test altogether, the caller having taken the
+responsibility for the directory it named. Step 4 derives `MODE` again, for the same
+reason the path is re-exported: it runs in a shell of its own.
 
 ---
 
@@ -102,6 +120,7 @@ BRANCH=$(git branch --show-current) || exit 1
 CODENAME=${BRANCH#*/}
 DOCS=${DOCS_OVERRIDE:-docs/features/$CODENAME}
 BASE=$(grep -E '^\*\*Base\*\*:' "$DOCS/IMPLEMENTATION.md" | sed 's/^\*\*Base\*\*: *//')
+[ -n "$BASE" ] || { echo "no Base line in $DOCS/IMPLEMENTATION.md"; exit 1; }
 git log --format='%h %s' "$BASE"..HEAD
 git diff --stat "$BASE"..HEAD
 ```
@@ -124,9 +143,15 @@ CODENAME=${BRANCH#*/}
 DOCS=${DOCS_OVERRIDE:-docs/features/$CODENAME}
 MODE=$(python3 -c 'import json,os; print(json.load(open(".implement.json")).get("artifacts","local") if os.path.exists(".implement.json") else "local")')
 [ "$MODE" = committed ] && { echo "committed mode: nothing is deleted"; exit 0; }
-rm -r "$DOCS"
+[ -d "$DOCS" ] && rm -r "$DOCS"
 [ -f ROADMAP.md ] && { TRIMMED=$(mktemp); grep -v "^- $CODENAME " ROADMAP.md > "$TRIMMED"; mv "$TRIMMED" ROADMAP.md; }
+[ -s ROADMAP.md ] || rm -f ROADMAP.md
 ```
+
+The directory is removed only when it is there: a second run of this skill, or a
+close over a directory a caller had already taken away, is not an error. The roadmap
+goes the same way when the trim emptied it, since a file holding nothing is not a
+roadmap.
 
 In `committed` mode nothing is deleted: the design, the plan and the state are part
 of the repository and stay in it.
@@ -140,6 +165,9 @@ of the repository and stay in it.
 | No `IMPLEMENTATION.md` under the derived path | `no IMPLEMENTATION.md under <docs>: pass --docs <path>` |
 | The tree is dirty | `the tree is not clean` |
 | A row is still `todo` or `doing` | `a phase is not done` |
+| `docs/features` or `ROADMAP.md` is not ignored in local mode | `docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json` |
+| Either of them is ignored in committed mode | `docs/features and ROADMAP.md must not be ignored in committed mode` |
+| The state file carries no `Base` line | `no Base line in <docs>/IMPLEMENTATION.md` |
 | A gate command came back non-zero | `<command> exit <code>` and the first lines of its output |
 | A bump is asked and no version file exists | the five names looked for, in order, then wait |
 
@@ -166,7 +194,8 @@ status:    DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_DECISION
 ## Quick Reference
 
 ```
-1. Preflight, then derive BRANCH, CODENAME, DOCS, BUMP (--docs exports DOCS_OVERRIDE)
+1. Preflight, then derive BRANCH, CODENAME, DOCS, BUMP, MODE, and guard both
+   artifact paths (--docs exports DOCS_OVERRIDE and skips the guard)
 2. Refuse on a dirty tree, a missing state file, or a row not done
 3. Full-project gate, every command with its exit code. Red stops, nothing repaired
 4. Bump none: skip. Otherwise the first of VERSION, pyproject.toml, package.json,

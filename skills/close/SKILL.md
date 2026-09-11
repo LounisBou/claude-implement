@@ -50,10 +50,10 @@ MODE=$(python3 -c 'import json,os; print(json.load(open(".implement.json")).get(
 if [ -n "${DOCS_OVERRIDE:-}" ]; then
   echo "artifacts path given, ignore guard skipped"
 elif [ "$MODE" = committed ]; then
-  if git check-ignore -q docs/features || git check-ignore -q ROADMAP.md; then
+  if git check-ignore -q docs/features/probe || git check-ignore -q ROADMAP.md; then
     echo "docs/features and ROADMAP.md must not be ignored in committed mode"; exit 1
   fi
-elif ! git check-ignore -q docs/features || ! git check-ignore -q ROADMAP.md; then
+elif ! git check-ignore -q docs/features/probe || ! git check-ignore -q ROADMAP.md; then
   echo "docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json"; exit 1
 fi
 echo "$CODENAME ready to close, bump $BUMP, artifacts $MODE"
@@ -64,7 +64,10 @@ rather than being skipped there: this skill deletes under one of them and trims 
 other, and it does that only where the repository agrees they are working notes. An
 explicit `--docs <path>` skips the test altogether, the caller having taken the
 responsibility for the directory it named. Step 4 derives `MODE` again, for the same
-reason the path is re-exported: it runs in a shell of its own.
+reason the path is re-exported: it runs in a shell of its own. The guard reads
+`docs/features/probe`, not `docs/features`: before the directory exists,
+`check-ignore` on the bare path reads not ignored, while the inner path is matched by
+every form the pattern takes.
 
 ---
 

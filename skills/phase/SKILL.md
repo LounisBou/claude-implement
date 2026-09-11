@@ -47,10 +47,10 @@ MODE=$(python3 -c 'import json,os; print(json.load(open(".implement.json")).get(
 if [ -n "${DOCS_OVERRIDE:-}" ]; then
   echo "artifacts path given, ignore guard skipped"
 elif [ "$MODE" = committed ]; then
-  if git check-ignore -q docs/features || git check-ignore -q ROADMAP.md; then
+  if git check-ignore -q docs/features/probe || git check-ignore -q ROADMAP.md; then
     echo "docs/features and ROADMAP.md must not be ignored in committed mode"; exit 1
   fi
-elif ! git check-ignore -q docs/features || ! git check-ignore -q ROADMAP.md; then
+elif ! git check-ignore -q docs/features/probe || ! git check-ignore -q ROADMAP.md; then
   echo "docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json"; exit 1
 fi
 echo "$CODENAME on $BRANCH, artifacts $MODE, state $DOCS/IMPLEMENTATION.md"
@@ -59,7 +59,9 @@ echo "$CODENAME on $BRANCH, artifacts $MODE, state $DOCS/IMPLEMENTATION.md"
 Both artifact paths are tested one by one, and the test inverts in `committed` mode
 rather than being skipped there. An explicit `--docs <path>` skips it altogether:
 the caller named a directory the repository's excludes know nothing about, and took
-the responsibility for it.
+the responsibility for it. The guard reads `docs/features/probe`, not
+`docs/features`: before the directory exists, `check-ignore` on the bare path reads
+not ignored, while the inner path is matched by every form the pattern takes.
 
 `IMPLEMENTATION.md` is the only source of truth for progress. Its header holds the
 codename, the title, the branch, the bump type, the artifacts mode and the base

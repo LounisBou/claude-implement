@@ -40,10 +40,10 @@ BRANCH=$(git branch --show-current) || exit 1
 [ -z "$(git status --porcelain -- . ':!docs/features' ':!ROADMAP.md')" ] || { echo "the tree is not clean"; exit 1; }
 MODE=$(python3 -c 'import json,os; print(json.load(open(".implement.json")).get("artifacts","local") if os.path.exists(".implement.json") else "local")')
 if [ "$MODE" = committed ]; then
-  if git check-ignore -q docs/features || git check-ignore -q ROADMAP.md; then
+  if git check-ignore -q docs/features/probe || git check-ignore -q ROADMAP.md; then
     echo "docs/features and ROADMAP.md must not be ignored in committed mode"; exit 1
   fi
-elif ! git check-ignore -q docs/features || ! git check-ignore -q ROADMAP.md; then
+elif ! git check-ignore -q docs/features/probe || ! git check-ignore -q ROADMAP.md; then
   echo "docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json"; exit 1
 fi
 ls -d docs/features/*/ 2>/dev/null | while read -r d; do [ -f "$d/IMPLEMENTATION.md" ] || echo "prepared: $(basename "$d")"; done
@@ -52,7 +52,10 @@ ls -d docs/features/*/ 2>/dev/null | while read -r d; do [ -f "$d/IMPLEMENTATION
 The clean-tree test excludes the two artifact paths: a prepared feature leaves a
 design, a plan and a roadmap line on disk, and refusing to start over them would
 make `implement:prepare` unusable. Both paths are tested for the ignore rule one by
-one, and the test inverts in `committed` mode rather than being skipped there.
+one, and the test inverts in `committed` mode rather than being skipped there. The
+guard reads `docs/features/probe`, not `docs/features`: before the directory exists,
+`check-ignore` on the bare path reads not ignored, while the inner path is matched by
+every form the pattern takes.
 
 The last line lists the prepared features: a directory with a design and a plan and
 no state file is one `implement:prepare` left ready.
@@ -75,6 +78,7 @@ started, and this feature is being started now.
 # Each bash block is its own shell; derive rather than inherit.
 CODENAME=<the prepared feature the user named>
 [ -f ROADMAP.md ] && { TRIMMED=$(mktemp); grep -v "^- $CODENAME " ROADMAP.md > "$TRIMMED"; mv "$TRIMMED" ROADMAP.md; }
+[ -s ROADMAP.md ] || rm -f ROADMAP.md
 ```
 
 On `new`, or on an empty list, go to Step 2.
@@ -176,10 +180,10 @@ ls "docs/features/$CODENAME/plan"   # the rows to write, one per phase file
 ## Step 7 — Committed mode
 
 Only when the artifacts mode read in the preconditions is `committed`: one commit
-`Start <title>` carrying the design, the plan, the state file and `ROADMAP.md`, in
-the convention read from `git log --format=%s -10`, with no trailer. In `local` mode
-this step does nothing: the files stay on disk and nothing under `docs/features/` is
-ever staged.
+`Start <title>` carrying the design, the plan, the state file and `ROADMAP.md` when
+it exists — a feature started with `new` never had one. In the convention read from
+`git log --format=%s -10`, with no trailer. In `local` mode this step does nothing:
+the files stay on disk and nothing under `docs/features/` is ever staged.
 
 ---
 

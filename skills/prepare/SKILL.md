@@ -39,10 +39,10 @@ would then be running.
 # Each bash block is its own shell; derive rather than inherit.
 MODE=$(python3 -c 'import json,os; print(json.load(open(".implement.json")).get("artifacts","local") if os.path.exists(".implement.json") else "local")')
 if [ "$MODE" = committed ]; then
-  if git check-ignore -q docs/features || git check-ignore -q ROADMAP.md; then
+  if git check-ignore -q docs/features/probe || git check-ignore -q ROADMAP.md; then
     echo "docs/features and ROADMAP.md must not be ignored in committed mode"; exit 1
   fi
-elif ! git check-ignore -q docs/features || ! git check-ignore -q ROADMAP.md; then
+elif ! git check-ignore -q docs/features/probe || ! git check-ignore -q ROADMAP.md; then
   echo "docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json"; exit 1
 fi
 echo "artifacts $MODE"
@@ -52,7 +52,10 @@ Both paths are tested one by one, because this skill writes to both: the design 
 the plan under `docs/features/`, one line in `ROADMAP.md` at the root. An unignored
 roadmap in `local` mode leaves a dirty tree behind, which `implement:feature` and
 `implement:close` then refuse. In `committed` mode the test inverts rather than
-being skipped: neither path may be ignored there.
+being skipped: neither path may be ignored there. The guard reads
+`docs/features/probe`, not `docs/features`: before the directory exists,
+`check-ignore` on the bare path reads not ignored, while the inner path is matched by
+every form the pattern takes.
 
 The branch does not matter here and is not read: whatever is checked out stays
 checked out, dirty or clean.

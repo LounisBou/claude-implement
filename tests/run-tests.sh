@@ -68,7 +68,7 @@ check_status "outside a git repository exits 13" 13 env HOME="$WORK" PREFLIGHT_S
 echo "== skills =="
 for skill in feature phase check close prepare; do
   doc="$ROOT/skills/$skill/SKILL.md"
-  # Every guard below reads this file. A missing document answers all seven of them
+  # Every guard below reads this file. A missing document answers all eight of them
   # with an empty string, which is what six of them expect from a correct one.
   check "$skill document exists" "1" "$([ -f "$doc" ] && echo 1 || echo 0)"
   check "$skill frontmatter names itself" "$skill" "$(awk '/^name:/{print $2; exit}' "$doc" 2>/dev/null)"
@@ -128,6 +128,16 @@ for skill in feature prepare phase close; do
     "$(grep -c 'check-ignore.*ROADMAP\.md' "$ROOT/skills/$skill/SKILL.md" 2>/dev/null \
        | awk '{print ($1 >= 1) ? 1 : 0}')"
 done
+# The pattern docs/features/ reads "not ignored" on the bare directory before it
+# exists; only an inner path is matched by every form the pattern takes.
+for skill in feature prepare phase close; do
+  check "$skill reads the ignore rule through docs/features/probe" "1" \
+    "$(grep -c 'check-ignore -q docs/features/probe' "$ROOT/skills/$skill/SKILL.md" 2>/dev/null \
+       | awk '{print ($1 >= 1) ? 1 : 0}')"
+done
+check "no skill reads the ignore rule through the bare directory" "" \
+  "$(grep -HoE 'check-ignore -q docs/features( |&&|\|\|)' \
+     "$ROOT"/skills/{feature,prepare,phase,close}/SKILL.md 2>/dev/null || true)"
 # Contract: every superpowers:<name> exists in the installed plugin, every implement:<name> is one of ours.
 # Each key of "plugins" in installed_plugins.json maps to a LIST of per-scope
 # install records (a plugin can be installed at more than one scope), so every
@@ -188,8 +198,10 @@ check "check takes its range from RANGE inside a fence" "1" \
   "$(awk '/^```bash/ { b = 1; next } /^```/ { b = 0 }
           b && /RANGE=/ { seen++ }
           END { print (seen > 0) ? 1 : 0 }' "$CHECK_DOC")"
-check "check never reads its range from a positional" "" \
-  "$(grep -o 'RANGE=\$1' "$CHECK_DOC" 2>/dev/null || true)"
+check "check's fence for verification 2 holds RANGE=\${RANGE:-} once" "1" \
+  "$(awk '/^### 2\. /{s=1;next} /^### [0-9]/{s=0} s && /^```bash/{b=1;next} s && /^```/{b=0} s && b && $0=="RANGE=${RANGE:-}"{c++} END{print c+0}' "$CHECK_DOC")"
+check "check never assigns RANGE from a positional argument" "" \
+  "$(grep -oE 'RANGE="?\$[0-9]"?' "$CHECK_DOC" 2>/dev/null || true)"
 
 echo "== phase =="
 PHASE_DOC="$ROOT/skills/phase/SKILL.md"

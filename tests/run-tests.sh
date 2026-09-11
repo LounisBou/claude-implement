@@ -68,14 +68,33 @@ check_status "outside a git repository exits 13" 13 env HOME="$WORK" PREFLIGHT_S
 echo "== skills =="
 for skill in feature phase check close prepare; do
   doc="$ROOT/skills/$skill/SKILL.md"
+  # Every guard below reads this file. A missing document answers all seven of them
+  # with an empty string, which is what six of them expect from a correct one.
+  check "$skill document exists" "1" "$([ -f "$doc" ] && echo 1 || echo 0)"
   check "$skill frontmatter names itself" "$skill" "$(awk '/^name:/{print $2; exit}' "$doc" 2>/dev/null)"
   check "$skill runs the preflight first" "1" "$(grep -c 'scripts/preflight.sh' "$doc" 2>/dev/null || echo 0)"
   check "$skill hard-codes no language" "" "$(grep -o 'French' "$doc" 2>/dev/null || true)"
   check "$skill has no accented character" "" "$(grep -o '[àâäéèêëïîôöùûüçÀÂÄÉÈÊËÏÎÔÖÙÛÜÇœŒ]' "$doc" 2>/dev/null | sort -u | tr '\n' ',' || true)"
   check "$skill has no common French words" "" "$(grep -Eiow 'vous|nous|avec|chemin|fichier|sont|une|titre' "$doc" 2>/dev/null | sort -u | tr '\n' ',' || true)"
   check "$skill reaches no other plugin's cache" "" "$(grep -o 'plugins/cache' "$doc" 2>/dev/null || true)"
+  # Commands, not substrings. The bracket classes make the match begin and end on a
+  # word boundary, so "through" in a comment stops being a call to GitHub while
+  # "git push origin main" in a block still is one.
   check "$skill never pushes, merges or calls GitHub" "" \
-    "$(awk '/^```bash/{f=1;next} /^```/{f=0} f && /(git push|gh |curl |git merge)/{print NR}' "$doc" 2>/dev/null)"
+    "$(awk '/^```bash/{f=1;next} /^```/{f=0} f && /(^|[^A-Za-z0-9_])(git push|git merge|curl|gh)([^A-Za-z0-9_]|$)/{print NR}' "$doc" 2>/dev/null)"
+
+  # A preflight named after the first block is reached too late: the block it was
+  # meant to guard has already run by then.
+  check "$skill runs the preflight before its first bash block" "1" \
+    "$(awk '/scripts\/preflight\.sh/ && !p { p = NR }
+            /^```bash/ && !b { b = NR }
+            END { print (p > 0 && b > 0 && p < b) ? 1 : 0 }' "$doc" 2>/dev/null)"
+
+  # One plugin variable and no absolute path standing in for one: a second variable,
+  # or a path under a home directory, reaches outside what this plugin owns.
+  check "$skill uses no plugin variable but CLAUDE_PLUGIN_ROOT" "" \
+    "$(grep -oE '\$\{?CLAUDE_[A-Z_]+|/Users/' "$doc" 2>/dev/null \
+       | grep -vE '^\$\{?CLAUDE_PLUGIN_ROOT$' | sort -u | tr '\n' ',')"
 done
 # Each bash block is its own shell.
 for skill in feature phase check close prepare; do
@@ -100,6 +119,14 @@ print(" ".join(bad))
 PYFENCE
 )
   check "every $skill bash block derives what it uses" "" "$unresolved"
+done
+# Both artifact paths are guarded, and the four skills that write to either of them
+# say so. A guard naming only docs/features leaves ROADMAP.md at the repository
+# root, which is the file that turns a clean tree dirty.
+for skill in feature prepare phase close; do
+  check "$skill guards ROADMAP.md with check-ignore" "1" \
+    "$(grep -c 'check-ignore.*ROADMAP\.md' "$ROOT/skills/$skill/SKILL.md" 2>/dev/null \
+       | awk '{print ($1 >= 1) ? 1 : 0}')"
 done
 # Contract: every superpowers:<name> exists in the installed plugin, every implement:<name> is one of ours.
 # Each key of "plugins" in installed_plugins.json maps to a LIST of per-scope
@@ -145,8 +172,8 @@ check "check carries seven numbered verifications" "7" \
 check "the seven verifications are in order" "1234567" \
   "$(awk "$FENCE_TRACK"'!f && /^### [1-7]\. / { printf "%s", substr($0, 5, 1) }' "$CHECK_DOC")"
 
-# This skill verifies and stops there. An overview that leaves it open is read by
-# an agent as licence to repair what it just found, which is the other skill's work.
+# This skill verifies and stops there. An overview that leaves it open reads as
+# licence to repair what it just found, which is the other skill's work.
 check "check says in its overview that it edits nothing" "1" \
   "$(awk "$FENCE_TRACK"'
      !f && /^## Overview$/ { in_ov = 1; next }
@@ -154,17 +181,30 @@ check "check says in its overview that it edits nothing" "1" \
      in_ov && /(edits nothing|never edits)/ { hits++ }
      END { print (hits > 0) ? 1 : 0 }' "$CHECK_DOC")"
 
+# The range travels by the environment, like the artifacts path. A positional
+# argument reaches the first block of a document and no other, and the block that
+# reads the range is the second one.
+check "check takes its range from RANGE inside a fence" "1" \
+  "$(awk '/^```bash/ { b = 1; next } /^```/ { b = 0 }
+          b && /RANGE=/ { seen++ }
+          END { print (seen > 0) ? 1 : 0 }' "$CHECK_DOC")"
+check "check never reads its range from a positional" "" \
+  "$(grep -o 'RANGE=\$1' "$CHECK_DOC" 2>/dev/null || true)"
+
 echo "== phase =="
 PHASE_DOC="$ROOT/skills/phase/SKILL.md"
 
 # The four NEVER lines are the whole of what this skill refuses. Three of them
 # would still read as a complete rule, which is why the count is the check and
-# not the presence of the fence.
+# not the presence of the fence. The rule itself lives in a fence, so the heading
+# tracking runs through $FENCE_TRACK: a "## " line shown inside that fence is
+# content the reader is given, not the start of the section after it.
 check "phase's iron rule holds four NEVER lines" "4" \
-  "$(awk '/^## The Iron Rule$/ { in_rule = 1; next }
-          /^## / { in_rule = 0 }
-          in_rule && /^NEVER / { nevers++ }
-          END { print nevers + 0 }' "$PHASE_DOC")"
+  "$(awk "$FENCE_TRACK"'
+     !f && /^## The Iron Rule$/ { in_rule = 1; next }
+     !f && /^## / { in_rule = 0 }
+     in_rule && /^NEVER / { nevers++ }
+     END { print nevers + 0 }' "$PHASE_DOC")"
 
 # The two skills the loop hands its work to. The contract check above proves the
 # directories exist; here they are proved to be invoked at all.
@@ -183,8 +223,15 @@ check "the loop states the gate exit code" "1" \
      in_loop && /exit code/ { seen++ }
      END { print (seen > 0) ? 1 : 0 }' "$PHASE_DOC")"
 
-# The work is written here, in this session, or it is written by nobody who read
-# the plan. A dispatch hidden in a copyable block is the one that gets run.
+# The nested call carries the artifacts path it was given, at both places the
+# document spells that call out. Without it the inner run derives a path from the
+# branch name, which is what --docs was passed to the outer run to avoid.
+check "phase's nested check call carries the artifacts path" "1" \
+  "$(grep -c 'implement:check .*--docs' "$PHASE_DOC" 2>/dev/null \
+     | awk '{print ($1 >= 2) ? 1 : 0}')"
+
+# The work is written inline, by whoever read the plan, or it is written by nobody
+# who read it. A dispatch hidden in a copyable block is the one that gets run.
 check "no phase bash block dispatches a subagent" "" \
   "$(awk '/^```bash/ { b = 1; next } /^```/ { b = 0 } b && /(Task\(|subagent)/ { print NR }' "$PHASE_DOC")"
 
@@ -233,10 +280,11 @@ done
 check "prepare refuses to create a branch" "1" \
   "$(grep -c '^NEVER create a branch' "$PREPARE_DOC" 2>/dev/null | awk '{print ($1 >= 1) ? 1 : 0}')"
 check "prepare's iron rule holds two NEVER lines" "2" \
-  "$(awk '/^## The Iron Rule$/ { in_rule = 1; next }
-          /^## / { in_rule = 0 }
-          in_rule && /^NEVER / { nevers++ }
-          END { print nevers + 0 }' "$PREPARE_DOC")"
+  "$(awk "$FENCE_TRACK"'
+     !f && /^## The Iron Rule$/ { in_rule = 1; next }
+     !f && /^## / { in_rule = 0 }
+     in_rule && /^NEVER / { nevers++ }
+     END { print nevers + 0 }' "$PREPARE_DOC")"
 
 echo "== close =="
 CLOSE_DOC="$ROOT/skills/close/SKILL.md"
@@ -250,10 +298,11 @@ check "close names the five version files in order" \
      | awk '!already[$0]++' | tr '\n' ' ' | sed 's/ *$//')"
 
 check "close's iron rule holds three NEVER lines" "3" \
-  "$(awk '/^## The Iron Rule$/ { in_rule = 1; next }
-          /^## / { in_rule = 0 }
-          in_rule && /^NEVER / { nevers++ }
-          END { print nevers + 0 }' "$CLOSE_DOC")"
+  "$(awk "$FENCE_TRACK"'
+     !f && /^## The Iron Rule$/ { in_rule = 1; next }
+     !f && /^## / { in_rule = 0 }
+     in_rule && /^NEVER / { nevers++ }
+     END { print nevers + 0 }' "$CLOSE_DOC")"
 
 # What happens after the branch belongs to the user. Said once: twice reads as a
 # warning, absent it reads as an offer to do it.

@@ -46,7 +46,7 @@ if [ "$MODE" = committed ]; then
 elif ! git check-ignore -q docs/features/probe || ! git check-ignore -q ROADMAP.md; then
   echo "docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json"; exit 1
 fi
-ls -d docs/features/*/ 2>/dev/null | while read -r d; do [ -f "$d/IMPLEMENTATION.md" ] || echo "prepared: $(basename "$d")"; done
+[ -d docs/features ] && ls -d docs/features/*/ 2>/dev/null | while read -r d; do [ -f "$d/IMPLEMENTATION.md" ] || echo "prepared: $(basename "$d")"; done
 ```
 
 The clean-tree test excludes the two artifact paths: a prepared feature leaves a
@@ -58,7 +58,10 @@ guard reads `docs/features/probe`, not `docs/features`: before the directory exi
 every form the pattern takes.
 
 The last line lists the prepared features: a directory with a design and a plan and
-no state file is one `implement:prepare` left ready.
+no state file is one `implement:prepare` left ready. The glob is reached only when
+`docs/features` is there, because a shell that refuses an unmatched glob fails the
+whole line before the listing runs, and a repository where nothing has been prepared
+is the ordinary case.
 
 ---
 
@@ -87,9 +90,14 @@ On `new`, or on an empty list, go to Step 2.
 
 ## Step 2 — Brainstorm
 
-`superpowers:brainstorming`, architectural path. Its output is the design of this
-feature, and it is the only source of the title. Nothing else happens in this step:
-no branch, no directory, no file outside what the brainstorm itself writes.
+`superpowers:brainstorming`, architectural path. What applies is its content: the
+questions, the approaches, and the design presented section by section with an
+approval on each. What does not: this skill writes that design itself at Step 3, to
+`docs/features/<codename>/DESIGN.md`, and the file the brainstorm would otherwise
+save under `docs/superpowers/specs` is not written at all; and nothing is committed
+here, since local mode stages nothing and committed mode commits once, at Step 7.
+
+Nothing else happens in this step: no branch, no directory, no file.
 
 ---
 
@@ -99,7 +107,8 @@ One question, asked once, carrying four proposed values:
 
 - **codename** — kebab-case, derived from the title, the name every path and every
   branch uses from here on;
-- **title** — the sentence the brainstorm settled on;
+- **title** — derived here from the heading of the design, the brainstorm having
+  settled none of its own;
 - **branch** type — `feat` or `fix`;
 - **bump** type — `major`, `minor`, `patch` or `none`, which `implement:close` reads
   and which alone decides whether a version file is ever touched.
@@ -137,10 +146,20 @@ mkdir -p "docs/features/$CODENAME/plan"
 
 ## Step 5 — Plan
 
-`superpowers:writing-plans` on `DESIGN.md`, output under
-`docs/features/<codename>/plan/`: `INDEX.md` listing the phases, and one
-`phase-NN-<slug>.md` per phase holding its sub-phases, its files, its tests and its
-definition of done. `implement:phase` reads those files and nothing else.
+`superpowers:writing-plans` on `DESIGN.md`. What applies is its decomposition and
+the content it gives each unit: the sub-phases, the files, the tests and the
+definition of done.
+
+What does not. Its mandatory plan header, the one naming a REQUIRED SUB-SKILL and
+`superpowers:subagent-driven-development`, is omitted, and so is its execution
+handoff, the closing question offering that same choice: `implement:phase` writes
+every sub-phase inline, and its Iron Rule forbids handing that writing to a
+subagent. Its output goes under `docs/features/<codename>/plan/` — `INDEX.md`
+listing the phases, and one `phase-NN-<slug>.md` per phase — never under
+`docs/superpowers/plans`. Its commit example does not apply either: the convention
+is read from `git log` at commit time, in `implement:phase`.
+
+`implement:phase` reads those files and nothing else.
 
 ---
 
@@ -205,7 +224,7 @@ otherwise, and this skill never says it for them.
 | `docs/features` or `ROADMAP.md` is not ignored in local mode | `docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json` |
 | Either of them is ignored in committed mode | `docs/features and ROADMAP.md must not be ignored in committed mode` |
 | The user has not answered the one question | wait; nothing is derived from a value they did not confirm |
-| The brainstorm settled no title | ask for it in one line, then wait |
+| The design has no heading to derive a title from | ask for the title in one line, then wait |
 
 ---
 

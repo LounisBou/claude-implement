@@ -277,6 +277,28 @@ check "feature gives the state table its header inside a fence" "1" \
      f && /^\| phase \| title \| status \| milestone \|/ { hits++ }
      END { print (hits > 0) ? 1 : 0 }' "$FEATURE_DOC")"
 
+# The brainstorm and the plan skill each save a file of their own under
+# docs/superpowers. This document names that path to say it is NOT written: the
+# design and the plan land under the feature's own directory instead.
+check "feature names the superpowers paths it does not write" "1" \
+  "$(grep -c 'docs/superpowers' "$FEATURE_DOC" 2>/dev/null | awk '{print ($1 >= 1) ? 1 : 0}')"
+
+# The plan skill's mandatory header hands execution to a subagent, which the loop
+# of implement:phase refuses. A plan step that does not name that header inherits it.
+check "feature's plan step names the header it omits" "1" \
+  "$(awk "$FENCE_TRACK"'
+     !f && /^## Step 5/ { in_plan = 1; next }
+     !f && /^## / { in_plan = 0 }
+     in_plan && /header/ { hits++ }
+     END { print (hits > 0) ? 1 : 0 }' "$FEATURE_DOC")"
+
+# An unmatched glob fails before the command runs in some shells, which would stop
+# the preconditions on a repository where nothing has been prepared yet.
+check "feature guards the prepared listing on the directory" "1" \
+  "$(awk '/^```bash/ { b = 1; next } /^```/ { b = 0 }
+          b && /\[ -d docs\/features \]/ { seen++ }
+          END { print (seen > 0) ? 1 : 0 }' "$FEATURE_DOC")"
+
 echo "== prepare =="
 PREPARE_DOC="$ROOT/skills/prepare/SKILL.md"
 

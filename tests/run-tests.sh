@@ -117,6 +117,43 @@ phantoms=$(for skill in feature phase check close prepare; do
 done)
 check "every skill reference names something real" "" "$phantoms"
 
+echo "== check =="
+CHECK_DOC="$ROOT/skills/check/SKILL.md"
+
+# A heading inside a fence is content the reader is shown, not a section of the
+# document: this one shows the verdict table. Left uncounted, it moves every line
+# after it into a section that does not exist. A fence opens on three or more
+# backticks and closes on at least as many.
+FENCE_TRACK='function bt(  c) { c = 0; while (substr($0, c + 1, 1) == "`") c++; return c }
+/^```/ { n = bt(); if (!f) { f = 1; fence = n } else if (n >= fence) { f = 0 } next }'
+
+# The report is the whole output of this skill. A reader who gets prose instead
+# of the table cannot tell which of the seven checks produced which evidence.
+check "check reports under one heading" "1" \
+  "$(awk "$FENCE_TRACK"'
+     !f && /^## Report$/ { hits++ }
+     END { print (hits > 0) ? 1 : 0 }' "$CHECK_DOC")"
+check "check gives the table its header" "1" \
+  "$(grep -c '^| check | evidence | result |' "$CHECK_DOC" | awk '{print ($1 >= 1) ? 1 : 0}')"
+
+# Seven verifications, each with its evidence, and the order is the one the spec
+# fixes: a delivery is read before it is compared, compared before it is re-run.
+# The concatenation falls on a deletion and on a reordering; the count names
+# which of the two happened.
+check "check carries seven numbered verifications" "7" \
+  "$(awk "$FENCE_TRACK"'!f && /^### [1-7]\. / { seen++ } END { print seen + 0 }' "$CHECK_DOC")"
+check "the seven verifications are in order" "1234567" \
+  "$(awk "$FENCE_TRACK"'!f && /^### [1-7]\. / { printf "%s", substr($0, 5, 1) }' "$CHECK_DOC")"
+
+# This skill verifies and stops there. An overview that leaves it open is read by
+# an agent as licence to repair what it just found, which is the other skill's work.
+check "check says in its overview that it edits nothing" "1" \
+  "$(awk "$FENCE_TRACK"'
+     !f && /^## Overview$/ { in_ov = 1; next }
+     !f && /^## / { in_ov = 0 }
+     in_ov && /(edits nothing|never edits)/ { hits++ }
+     END { print (hits > 0) ? 1 : 0 }' "$CHECK_DOC")"
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

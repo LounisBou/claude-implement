@@ -7,7 +7,179 @@ description: Use to check a delivery, verify a phase, or check a commit range ag
 
 ## Overview
 
-Verifies a delivery against the plan and the design on a given commit range, seven checks each with their evidence, and edits nothing.
+Verifies one delivery against the plan and the design on a commit range: seven
+verifications, each carrying the evidence that produced it, then one table and one
+verdict. It re-runs the project's gate itself rather than believing a report of it.
+It edits nothing: a defect is named here and repaired elsewhere.
 
 **Preflight:** run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.sh"` as the first
 action. A non-zero exit stops the skill: print its output verbatim and do nothing else.
+
+**Announce at start:** "I am using implement:check to verify this delivery against
+its plan." Speak to the user in the user's language; write every artifact in English.
+
+---
+
+## The Iron Rule
+
+```
+NEVER edit, stage or commit anything: this skill reads and reports
+NEVER guess an exit code: a command that did not run is a FAIL row
+NEVER pass a row whose evidence was not read in this run
+```
+
+A verification with no output quoted was not done. A claim with no evidence is a
+`FAIL`, not a doubt — `superpowers:verification-before-completion` states the same
+rule for the work this skill reads.
+
+---
+
+## Inputs
+
+`implement:check <base>..<head> [--phase N] [--docs <path>]`
+
+- `<base>..<head>` — the range under review. Required: without it there is nothing
+  to read. `HEAD` on both sides of a sub-phase is the common case.
+- `--phase N` — the phase whose file is the reference for checks 3, 5 and 7. Without
+  it, the reference is every phase file the range touches.
+- `--docs <path>` — the feature directory. When it is given, `export
+  DOCS_OVERRIDE=<path>` before running the block below; without it the path is
+  derived from the branch name (`feat/<codename>` or `fix/<codename>`).
+
+```bash
+# Each bash block is its own shell; derive rather than inherit.
+BRANCH=$(git branch --show-current) || exit 1
+CODENAME=${BRANCH#*/}
+DOCS=${DOCS_OVERRIDE:-docs/features/$CODENAME}
+[ -d "$DOCS/plan" ] || { echo "no plan under $DOCS: pass --docs <path>"; exit 1; }
+echo "checking $CODENAME from $DOCS"
+```
+
+The phase file is `<docs>/plan/phase-NN-<slug>.md`, the design is `<docs>/DESIGN.md`,
+the state is `<docs>/IMPLEMENTATION.md`. A delivery with no plan is not checkable:
+stop on the line the block prints.
+
+---
+
+## The seven verifications
+
+Run the seven in this order: a delivery is read before it is compared, compared
+before the gate is re-run, and the design is the last word. Each produces one row
+of the report, with the command or the quotation that is its evidence.
+
+### 1. The delivery is not truncated
+
+Read the report or the commit list under review to its end. It ends with the last
+item it announces: a list of five sub-phases ends on the fifth, a table of rows ends
+on the row the header promises. **FAIL** when it stops mid-item, when a count in the
+prose disagrees with what follows it, or when the text ends on an unclosed fence.
+
+### 2. The git range says what is claimed
+
+```bash
+# Each bash block is its own shell; derive rather than inherit.
+RANGE=$1
+git log --format='%h %s' "$RANGE"
+git diff --stat "$RANGE"
+git diff --name-only "$RANGE"
+```
+
+**FAIL** when a commit the delivery claims is absent from the log, when a file it
+claims to have written is absent from the diff, when the range is empty, or when a
+commit message carries a trailer the repository's convention does not use.
+
+### 3. Plan compliance, sub-phase by sub-phase
+
+Read the sub-phases of the phase file. For each one: every deliverable it names is
+present in the diff, and nothing the delivery claims is absent from it. Quote the
+plan line beside the file that answers it. **FAIL** on a deliverable with no file, on
+a step marked done with no commit, or on a test the plan requires and the diff does
+not add.
+
+### 4. The gate, re-run here
+
+The commands are the ones the repository names: read `CLAUDE.md`, else
+`CONTRIBUTING.md`, else run the tests covering the files the diff touches. Run each
+one synchronously and read its exit code; state the command and the code side by
+side. **FAIL** on any non-zero code. A command that cannot run at all — a missing
+tool, a missing dependency — is its own `FAIL` row naming what is missing, never a
+guess and never a skip.
+
+### 5. Scope drift
+
+Every path of `git diff --name-only <base>..<head>` is either named by the phase
+file or is a direct consequence it states. **FAIL** on a file outside that list: name
+the path and the phase file it is absent from. A formatting sweep over untouched
+files, a dependency bump nobody asked for and a neighbouring fix are all drift.
+
+### 6. Design coherence
+
+Read what the diff does, then read the sentences of `DESIGN.md` it implements. They
+agree or they do not. **FAIL** when the code answers a different problem, when it
+contradicts a decision the design records, or when a decision the design leaves open
+was closed here without a line saying so.
+
+### 7. Design-contract coverage
+
+Every interface the design names for this phase — a command and its arguments, a
+file shape, a table header, an exit code, a state key — exists in the diff with the
+stated spelling. Quote the design line and the line of the diff that answers it.
+**FAIL** on a contract that is absent, renamed or narrowed.
+
+---
+
+## Report
+
+One row per verification, the evidence in the row, then the verdict and the status.
+
+```
+| check | evidence | result |
+|---|---|---|
+| 1 truncation | the report ends on sub-phase 5 of 5 | PASS |
+| 2 git range | 3 commits, 7 files, all claimed | PASS |
+| 3 plan compliance | every deliverable of 4.1 to 4.3 present | PASS |
+| 4 gate | bash tests/run-tests.sh exit 0 | PASS |
+| 5 scope drift | README.md touched, absent from the phase file | FAIL |
+| 6 design coherence | D2 honoured: no version touched here | PASS |
+| 7 contract coverage | --docs and --phase both present | PASS |
+
+FAIL: 5
+DONE_WITH_CONCERNS
+```
+
+The verdict is one line: `PASS`, or `FAIL: <the numbers of the failing rows>`. The
+status is one of `DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`, `NEEDS_DECISION` —
+`DONE` on a clean `PASS`, `DONE_WITH_CONCERNS` when every failing row is cosmetic,
+`BLOCKED` when the gate or the plan compliance fell, `NEEDS_DECISION` when the
+design and the delivery disagree on something the design does not settle.
+
+---
+
+## Stops
+
+| Situation | The one line |
+|---|---|
+| No plan under the derived path | `no plan under <docs>: pass --docs <path>` |
+| No range given | `give me a range: implement:check <base>..<head>` |
+| A gate command cannot run | a `FAIL` row naming the missing tool, and the run continues |
+| The design is absent | checks 6 and 7 are `FAIL` rows naming it, never silent passes |
+
+Each stop says its line once and waits. This skill never repairs what it finds and
+never asks whether it should continue.
+
+---
+
+## Quick Reference
+
+```
+1. Preflight, then derive BRANCH, CODENAME, DOCS (--docs exports DOCS_OVERRIDE)
+2. Read the plan file of the phase and DESIGN.md
+3. 1 truncation   — the delivery ends on the item it announces
+4. 2 git range    — log, diff --stat, diff --name-only against what is claimed
+5. 3 plan         — every deliverable present, nothing claimed that is absent
+6. 4 gate         — re-run it here, every command with its exit code
+7. 5 drift        — files outside the phase file's list
+8. 6 design       — the diff against the sentences it implements
+9. 7 contracts    — every named interface, with its spelling
+10. The table, the verdict line, the status. Edit nothing.
+```

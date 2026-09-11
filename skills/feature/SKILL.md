@@ -46,7 +46,7 @@ if [ "$MODE" = committed ]; then
 elif ! git check-ignore -q docs/features/probe || ! git check-ignore -q ROADMAP.md; then
   echo "docs/features and ROADMAP.md must be ignored in local mode: add them to the excludes, or set artifacts to committed in .implement.json"; exit 1
 fi
-[ -d docs/features ] && ls -d docs/features/*/ 2>/dev/null | while read -r d; do [ -f "$d/IMPLEMENTATION.md" ] || echo "prepared: $(basename "$d")"; done
+find docs/features -mindepth 1 -maxdepth 1 -type d 2>/dev/null | while read -r d; do [ -f "$d/IMPLEMENTATION.md" ] || echo "prepared: $(basename "$d")"; done
 ```
 
 The clean-tree test excludes the two artifact paths: a prepared feature leaves a
@@ -58,10 +58,10 @@ guard reads `docs/features/probe`, not `docs/features`: before the directory exi
 every form the pattern takes.
 
 The last line lists the prepared features: a directory with a design and a plan and
-no state file is one `implement:prepare` left ready. The glob is reached only when
-`docs/features` is there, because a shell that refuses an unmatched glob fails the
-whole line before the listing runs, and a repository where nothing has been prepared
-is the ordinary case.
+no state file is one `implement:prepare` left ready. The listing is reached whether
+`docs/features` is absent or empty, because a shell that refuses an unmatched glob
+(zsh, the session's shell) prints `no matches found` in both cases, and a guard on
+the directory's existence covered only the first.
 
 ---
 

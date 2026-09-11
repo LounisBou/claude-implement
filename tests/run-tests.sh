@@ -311,11 +311,11 @@ check "feature's plan step names the header it omits" "1" \
      in_plan && /header/ { hits++ }
      END { print (hits > 0) ? 1 : 0 }' "$FEATURE_DOC")"
 
-# An unmatched glob fails before the command runs in some shells, which would stop
-# the preconditions on a repository where nothing has been prepared yet.
-check "feature guards the prepared listing on the directory" "1" \
+# The listing must be reached whether docs/features is absent or empty, which a
+# find of the directory does and a glob guarded on it does not.
+check "feature lists prepared features with find, not a glob" "1" \
   "$(awk '/^```bash/ { b = 1; next } /^```/ { b = 0 }
-          b && /\[ -d docs\/features \]/ { seen++ }
+          b && index($0, "find docs/features -mindepth 1 -maxdepth 1 -type d") { seen++ }
           END { print (seen > 0) ? 1 : 0 }' "$FEATURE_DOC")"
 
 echo "== prepare =="
@@ -383,7 +383,7 @@ check "close reads the repository's last release subject" "1" \
 # with it. Left behind, they are what the next run of the ignore guard reads.
 check "close takes away the empty parents it leaves" "1" \
   "$(awk '/^```bash/ { b = 1; next } /^```/ { b = 0 }
-          b && index($0, "rmdir docs/features") { seen++ }
+          b && index($0, "rmdir docs/features docs") { seen++ }
           END { print (seen > 0) ? 1 : 0 }' "$CLOSE_DOC")"
 
 echo

@@ -205,8 +205,9 @@ answer.
 branch:    <type>/<codename>, base <sha>
 commits:   <short sha> <subject>   (every commit since the base)
 files:     the version file if one was written
-gate:      <command> exit <code>   (one line per command, both runs: the full gate
-           of Step 1, then the same gate after the version was written)
+gate:      <command> exit <code>   (one line per command: both runs when a
+           version was written — the full gate of Step 1, then the same gate
+           again — otherwise the one gate of Step 1)
 checks:    every phase row done, tree clean before and after
 deviations: what departs from the plan or the bump type the feature declared
 open questions: what the branch leaves open

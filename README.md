@@ -42,7 +42,7 @@ below.
 
 ```
 docs/features/<codename>/
-  DESIGN.md              the spec the brainstorm produced (superpowers:brainstorming, architectural path)
+  DESIGN.md              the design implement:feature writes from the brainstorm's content (superpowers:brainstorming, architectural path)
   plan/INDEX.md          the phase list (superpowers:writing-plans)
   plan/phase-NN-<slug>.md  one file per phase: sub-phases, files, tests, definition of done
   IMPLEMENTATION.md      the state, and the only source of truth for progress
@@ -59,12 +59,14 @@ then one row per phase:
 | phase | title | status | milestone |
 |---|---|---|---|
 | 01 | the first phase | done | 82525e4 |
-| 02 | the second one | doing |  |
+| 02 | the second one | doing | 9f31a0c |
 ```
 
-Status is `todo`, `doing` or `done`, and the milestone stays empty until the phase
-is done. `/implement:phase` resumes at the first row that is not done and refuses
-to run without this file; `/implement:close` refuses while a row is not done.
+Status is `todo`, `doing` or `done`. While a row is `doing` the milestone column
+holds the sha the current sub-phase started from, rewritten before each one; once
+the row is `done` it holds the phase's last commit; a `todo` row leaves it empty.
+`/implement:phase` resumes at the first row that is not done and refuses to run
+without this file; `/implement:close` refuses while a row is not done.
 `/implement:prepare` appends `- <codename> — <title> (<bump>)` to `ROADMAP.md` and
 writes no state file, which is what makes a prepared feature recognisable.
 

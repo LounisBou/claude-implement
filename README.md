@@ -1,8 +1,7 @@
 # implement
 
-The feature lifecycle an agent runs in a repository — brainstorm, branch, plan,
-phases, close — usable by a person in a session or by an agent an orchestrator
-launches, with nothing in it that belongs to one project.
+The feature lifecycle in a repository — brainstorm, branch, plan, phases, close —
+with nothing in it that belongs to one project.
 
 ## Requires one plugin
 

@@ -102,11 +102,9 @@ PYFENCE
   check "every $skill bash block derives what it uses" "" "$unresolved"
 done
 # Contract: every superpowers:<name> exists in the installed plugin, every implement:<name> is one of ours.
-# Deviation from the plan's one-liner: each key of "plugins" in installed_plugins.json maps to a LIST of
-# per-scope install records (a plugin can be installed at more than one scope), not to a single record
-# object, confirmed by reading ~/.claude/plugins/installed_plugins.json (e.g. commit-commands@... has three
-# entries). p[0] in the plan's original form is therefore that list, never a dict, so "isinstance(p[0],dict)"
-# is always False and the resolution always fails. Flattened to iterate every record of every matching key.
+# Each key of "plugins" in installed_plugins.json maps to a LIST of per-scope
+# install records (a plugin can be installed at more than one scope), so every
+# record of every matching key is flattened before the first installPath is read.
 SP_ROOT="${SUPERPOWERS_ROOT:-$(python3 -c 'import json,os; d=json.load(open(os.path.expanduser("~/.claude/plugins/installed_plugins.json"))); recs=[r for k,v in d.get("plugins",{}).items() if k.startswith("superpowers@") for r in v]; print(recs[0]["installPath"] if recs and isinstance(recs[0],dict) and "installPath" in recs[0] else "")' 2>/dev/null)}"
 check "the superpowers plugin resolves" "1" "$([ -d "$SP_ROOT/skills" ] && echo 1 || echo 0)"
 phantoms=$(for skill in feature phase check close prepare; do

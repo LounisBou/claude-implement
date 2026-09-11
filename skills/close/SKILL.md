@@ -105,9 +105,24 @@ the second and resets the third, `patch` raises the third. Write it back in plac
 `python3` for a JSON field or a TOML field, so the rest of the file is untouched;
 `printf` for a plain `VERSION` file.
 
-Then one commit `Release <version>` in the convention read from
-`git log --format=%s -10`, with no trailer, carrying the version file alone — and,
-in `committed` mode, the feature's artifacts with it.
+Run the full gate of Step 1 again, every command with its exit code. A non-zero
+code stops here with the status `NEEDS_DECISION` and one line:
+`version written in <file>, gate red: <the first failing line>` — a repository that
+mirrors its version elsewhere (a marketplace entry, a suite literal) says so through
+its own gate, and aligning those places is the repository's decision, not this
+skill's guess.
+
+Then one commit, with no trailer, carrying the version file alone — and, in
+`committed` mode, the feature's artifacts with it. Its subject takes the shape of
+the repository's last release commit:
+
+```bash
+# Each bash block is its own shell; derive rather than inherit.
+git log --format=%s --grep='^Release' -3
+```
+
+`Release pr-review 0.3.3` where that log reads `Release pr-review 0.3.2`, and
+`Release <version>` where it holds no release subject at all.
 
 A bump type other than `none` with none of the five files present stops the skill:
 say which five were looked for and wait. Guessing a version file is how a version
@@ -147,12 +162,16 @@ DOCS=${DOCS_OVERRIDE:-docs/features/$CODENAME}
 MODE=$(python3 -c 'import json,os; print(json.load(open(".implement.json")).get("artifacts","local") if os.path.exists(".implement.json") else "local")')
 [ "$MODE" = committed ] && { echo "committed mode: nothing is deleted"; exit 0; }
 [ -d "$DOCS" ] && rm -r "$DOCS"
+rmdir docs/features docs 2>/dev/null || true
 [ -f ROADMAP.md ] && { TRIMMED=$(mktemp); grep -v "^- $CODENAME " ROADMAP.md > "$TRIMMED"; mv "$TRIMMED" ROADMAP.md; }
 [ -s ROADMAP.md ] || rm -f ROADMAP.md
 ```
 
 The directory is removed only when it is there: a second run of this skill, or a
-close over a directory a caller had already taken away, is not an error. The roadmap
+close over a directory a caller had already taken away, is not an error. `rmdir`
+takes each parent only when the removal emptied it, and says nothing when it did
+not: a repository holding another feature, or holding documentation of its own under
+`docs`, keeps both directories. The roadmap
 goes the same way when the trim emptied it, since a file holding nothing is not a
 roadmap.
 
@@ -173,6 +192,7 @@ of the repository and stay in it.
 | The state file carries no `Base` line | `no Base line in <docs>/IMPLEMENTATION.md` |
 | A gate command came back non-zero | `<command> exit <code>` and the first lines of its output |
 | A bump is asked and no version file exists | the five names looked for, in order, then wait |
+| The gate is red on the run that follows the version write | `version written in <file>, gate red: <the first failing line>` — status `NEEDS_DECISION` |
 
 Each stop says its line once and waits. Nothing outward-facing is done here, on any
 answer.
@@ -185,7 +205,8 @@ answer.
 branch:    <type>/<codename>, base <sha>
 commits:   <short sha> <subject>   (every commit since the base)
 files:     the version file if one was written
-gate:      <command> exit <code>   (one line per command)
+gate:      <command> exit <code>   (one line per command, both runs: the full gate
+           of Step 1, then the same gate after the version was written)
 checks:    every phase row done, tree clean before and after
 deviations: what departs from the plan or the bump type the feature declared
 open questions: what the branch leaves open
@@ -202,8 +223,10 @@ status:    DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_DECISION
 2. Refuse on a dirty tree, a missing state file, or a row not done
 3. Full-project gate, every command with its exit code. Red stops, nothing repaired
 4. Bump none: skip. Otherwise the first of VERSION, pyproject.toml, package.json,
-   composer.json, .claude-plugin/plugin.json, and one commit "Release <version>"
+   composer.json, .claude-plugin/plugin.json, then the same gate again, then one
+   commit in the shape the repository's last release subject gives
 5. Summary: branch, commits since the base, version, gate codes, the closing sentence
-6. local mode: delete the feature directory and its roadmap line. committed: keep all
+6. local mode: delete the feature directory, the parents it empties and its roadmap
+   line. committed: keep all
 7. Push nothing, merge nothing, open nothing
 ```

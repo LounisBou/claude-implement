@@ -362,6 +362,30 @@ check "close's iron rule holds three NEVER lines" "3" \
 check "close hands the rest back in one sentence" "1" \
   "$(grep -o 'push, pull request and review are yours' "$CLOSE_DOC" 2>/dev/null | wc -l | tr -d ' ')"
 
+# A version written into one file and mirrored in another leaves the repository
+# green on the first gate and red on the second. The stop names the file it wrote.
+check "close stops on a gate that turned red after the version write" "1" \
+  "$(awk "$FENCE_TRACK"'
+     !f && /^## Stops$/ { in_st = 1; next }
+     !f && /^## / { in_st = 0 }
+     in_st && /^\|/ && /gate red/ { hits++ }
+     END { print (hits > 0) ? 1 : 0 }' "$CLOSE_DOC")"
+
+# The release subject is the repository's, not this skill's. The log line that
+# reads it is quoted so the writer runs it rather than recalling a shape.
+# index() rather than a regex: the command carries the quote awk would end on.
+check "close reads the repository's last release subject" "1" \
+  "$(awk '/^```bash/ { b = 1; next } /^```/ { b = 0 }
+          b && index($0, "--grep=\047^Release\047") { seen++ }
+          END { print (seen > 0) ? 1 : 0 }' "$CLOSE_DOC")"
+
+# The feature directory goes, and the two parents it was the only tenant of go
+# with it. Left behind, they are what the next run of the ignore guard reads.
+check "close takes away the empty parents it leaves" "1" \
+  "$(awk '/^```bash/ { b = 1; next } /^```/ { b = 0 }
+          b && index($0, "rmdir docs/features") { seen++ }
+          END { print (seen > 0) ? 1 : 0 }' "$CLOSE_DOC")"
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

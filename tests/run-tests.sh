@@ -218,6 +218,48 @@ check "feature gives the state table its header inside a fence" "1" \
      f && /^\| phase \| title \| status \| milestone \|/ { hits++ }
      END { print (hits > 0) ? 1 : 0 }' "$FEATURE_DOC")"
 
+echo "== prepare =="
+PREPARE_DOC="$ROOT/skills/prepare/SKILL.md"
+
+# Preparing a feature is the first half of starting one, and the half that touches
+# no branch: it has to stand on the same two superpowers skills.
+for ref in superpowers:brainstorming superpowers:writing-plans; do
+  check "prepare invokes $ref" "1" \
+    "$(grep -c "$ref" "$PREPARE_DOC" 2>/dev/null | awk '{print ($1 >= 1) ? 1 : 0}')"
+done
+
+# The one line that keeps a prepared feature from disturbing whatever is in flight
+# on another branch. Without it this skill is implement:feature with a missing step.
+check "prepare refuses to create a branch" "1" \
+  "$(grep -c '^NEVER create a branch' "$PREPARE_DOC" 2>/dev/null | awk '{print ($1 >= 1) ? 1 : 0}')"
+check "prepare's iron rule holds two NEVER lines" "2" \
+  "$(awk '/^## The Iron Rule$/ { in_rule = 1; next }
+          /^## / { in_rule = 0 }
+          in_rule && /^NEVER / { nevers++ }
+          END { print nevers + 0 }' "$PREPARE_DOC")"
+
+echo "== close =="
+CLOSE_DOC="$ROOT/skills/close/SKILL.md"
+
+# The detection order is the contract: the first file found is the one bumped, so a
+# repository holding both a VERSION and a package.json gets a different version
+# written if two names trade places. Compared in order of first appearance.
+check "close names the five version files in order" \
+  "VERSION pyproject.toml package.json composer.json .claude-plugin/plugin.json" \
+  "$(grep -oE 'VERSION|pyproject\.toml|package\.json|composer\.json|\.claude-plugin/plugin\.json' "$CLOSE_DOC" \
+     | awk '!already[$0]++' | tr '\n' ' ' | sed 's/ *$//')"
+
+check "close's iron rule holds three NEVER lines" "3" \
+  "$(awk '/^## The Iron Rule$/ { in_rule = 1; next }
+          /^## / { in_rule = 0 }
+          in_rule && /^NEVER / { nevers++ }
+          END { print nevers + 0 }' "$CLOSE_DOC")"
+
+# What happens after the branch belongs to the user. Said once: twice reads as a
+# warning, absent it reads as an offer to do it.
+check "close hands the rest back in one sentence" "1" \
+  "$(grep -o 'push, pull request and review are yours' "$CLOSE_DOC" 2>/dev/null | wc -l | tr -d ' ')"
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

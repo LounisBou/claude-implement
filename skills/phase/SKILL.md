@@ -71,11 +71,16 @@ commit; its table is one row per phase:
 | phase | title | status | milestone |
 |---|---|---|---|
 | 01 | the skeleton | done | 82525e4 |
-| 02 | the core | doing |  |
+| 02 | the core | doing | 9f31a0c |
 | 03 | the cycle | todo |  |
 ```
 
-Status is `todo`, `doing` or `done`; the milestone is empty until the phase is done.
+Status is `todo`, `doing` or `done`. The milestone column carries a sha from the
+moment a phase is under way: while the row is `doing` it holds the commit the
+sub-phase being written started from, rewritten before each one, and when the row
+turns `done` it holds the last commit of the phase. A `todo` row leaves it empty. A
+run taken up again rebuilds the range it owes from that column rather than guessing
+where the work began.
 
 ---
 
@@ -87,7 +92,19 @@ interrupted run resumes on the right phase. Read its file,
 `<docs>/plan/phase-NN-<slug>.md`, in full before writing a line: it names the
 sub-phases, the files, the tests and the definition of done.
 
-Then, for each sub-phase of that file, in its order:
+Then, for each sub-phase of that file, in its order. Before the first line of one is
+written, record where it starts: its row keeps the status `doing` and its milestone
+column takes the current head. That sha is the base of the range step 5 checks, and
+it is written before the work rather than after it so that a run taken up again
+checks a sub-phase it did not itself begin.
+
+```bash
+# Each bash block is its own shell; derive rather than inherit.
+BRANCH=$(git branch --show-current) || exit 1
+CODENAME=${BRANCH#*/}
+DOCS=${DOCS_OVERRIDE:-docs/features/$CODENAME}
+git rev-parse --short HEAD   # this sub-phase's base, into "$DOCS/IMPLEMENTATION.md"
+```
 
 1. **Tests first.** `superpowers:test-driven-development`: the failing test is
    written and seen to fail before the code that makes it pass. A test that has
@@ -110,14 +127,15 @@ git log --format=%s -10
    imperative subjects mean plain imperative prose. A body only when the reason is
    not obvious from the subject. No trailer of any kind, whatever the convention.
 
-5. **The check.** `implement:check <sub-phase base>..HEAD --phase <N> --docs <path
-   when given>`, where the base is the commit the sub-phase started from and the
-   path is the one `--docs` carried, when it carried one. A `FAIL` is repaired
+5. **The check.** `implement:check <recorded sha>..HEAD --phase <N> --docs <path
+   when given>`, where the recorded sha is the one the milestone column took when
+   this sub-phase started and the path is the one `--docs` carried, when it carried
+   one. A `FAIL` is repaired
    inline and re-checked once. A second `FAIL` stops the phase `BLOCKED`, with the
    table and the verdict quoted in the report.
 
-When the last sub-phase is green, close the phase: set its row to `done` with the
-milestone, which is the last commit of the phase.
+When the last sub-phase is green, close the phase: set its row to `done`, the
+milestone column giving up the last base it held for the last commit of the phase.
 
 ```bash
 # Each bash block is its own shell; derive rather than inherit.
@@ -206,12 +224,13 @@ Read-only search subagents are the one exception, and they read; they do not wri
 
 ```
 1. Preflight, then derive BRANCH, CODENAME, DOCS, MODE (--docs exports DOCS_OVERRIDE)
-2. Read IMPLEMENTATION.md; take phase N, else the first row not done; mark it doing
+2. IMPLEMENTATION.md: phase N, else the first row not done. Mark it doing, and record
+   each sub-phase's starting sha in its milestone column before writing that sub-phase
 3. Read plan/phase-NN-<slug>.md in full
 4. Per sub-phase: failing test, code, gate with exit codes (two fixes at most)
 5. Commit in the convention read from git log --format=%s -10, no trailer
 6. implement:check <base>..HEAD --phase N --docs <path when given>; one fix, then stop
-7. End of phase: row done + milestone sha; in committed mode one commit carries it
+7. End of phase: row done, milestone = the phase's last commit; committed mode commits it
 8. With N: stop and report. Without: the next row, no pause, no narration
 9. No row left: implement:close is next
 ```

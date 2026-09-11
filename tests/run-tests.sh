@@ -203,6 +203,15 @@ check "check's fence for verification 2 holds RANGE=\${RANGE:-} once" "1" \
 check "check never assigns RANGE from a positional argument" "" \
   "$(grep -oE 'RANGE="?\$[0-9]"?' "$CHECK_DOC" 2>/dev/null || true)"
 
+# Verifications 3 and 7 read what the delivery puts forward, not the whole phase
+# file: a sub-phase still to come is not a deliverable this range owes.
+check "check's plan compliance judges what the delivery claims" "1" \
+  "$(awk "$FENCE_TRACK"'
+     !f && /^### 3\. / { in_v3 = 1; next }
+     !f && /^### / { in_v3 = 0 }
+     in_v3 && /sub-phases the delivery claims/ { hits++ }
+     END { print (hits > 0) ? 1 : 0 }' "$CHECK_DOC")"
+
 echo "== phase =="
 PHASE_DOC="$ROOT/skills/phase/SKILL.md"
 
@@ -246,6 +255,16 @@ check "phase's nested check call carries the artifacts path" "1" \
 # who read it. A dispatch hidden in a copyable block is the one that gets run.
 check "no phase bash block dispatches a subagent" "" \
   "$(awk '/^```bash/ { b = 1; next } /^```/ { b = 0 } b && /(Task\(|subagent)/ { print NR }' "$PHASE_DOC")"
+
+# The milestone column carries a sha from the moment a phase is under way: the base
+# of the sub-phase being written while the row is doing, the phase's last commit
+# once it is done. An example showing it empty teaches the older shape.
+check "phase's example table shows a doing row carrying its base" "1" \
+  "$(awk "$FENCE_TRACK"'
+     !f && /^## Inputs$/ { in_in = 1; next }
+     !f && /^## / { in_in = 0 }
+     in_in && f && /^\| *[0-9]+ *\|[^|]*\| *doing *\| *[0-9a-f]+ *\|/ { hits++ }
+     END { print (hits > 0) ? 1 : 0 }' "$PHASE_DOC")"
 
 echo "== feature =="
 FEATURE_DOC="$ROOT/skills/feature/SKILL.md"

@@ -97,11 +97,14 @@ commit message carries a trailer the repository's convention does not use.
 
 ### 3. Plan compliance, sub-phase by sub-phase
 
-Read the sub-phases of the phase file. For each one: every deliverable it names is
-present in the diff, and nothing the delivery claims is absent from it. Quote the
-plan line beside the file that answers it. **FAIL** on a deliverable with no file, on
-a step marked done with no commit, or on a test the plan requires and the diff does
-not add.
+Read the phase file, then take the sub-phases the delivery claims: the ones its
+report names, or, when it carries no report, the ones the commits since the recorded
+base answer. For each one: every deliverable it names is present in the diff, and
+nothing the delivery claims is absent from it. Quote the plan line beside the file
+that answers it. **FAIL** on a deliverable with no file, on a step marked done with
+no commit, or on a test the plan requires and the diff does not add. A sub-phase of
+the file this delivery does not claim has not been delivered yet, and is not a row
+here.
 
 ### 4. The gate, re-run here
 
@@ -130,8 +133,10 @@ was closed here without a line saying so.
 
 Every interface the design names for this phase — a command and its arguments, a
 file shape, a table header, an exit code, a state key — exists in the diff with the
-stated spelling. Quote the design line and the line of the diff that answers it.
-**FAIL** on a contract that is absent, renamed or narrowed.
+stated spelling. The reference is the same as verification 3, the sub-phases the
+delivery claims: a contract a sub-phase still to come will carry is not missing from
+this range. Quote the design line and the line of the diff that answers it. **FAIL**
+on a contract that is absent, renamed or narrowed.
 
 ---
 

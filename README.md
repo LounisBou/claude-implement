@@ -21,6 +21,10 @@ stops before doing anything and prints the command that fixes it.
 `/implement:install` writes nothing. Run `/implement:doctor` any time to repeat
 the check.
 
+One thing the target repository has to provide: in the default mode,
+`docs/features` and `ROADMAP.md` must be ignored there, see `.implement.json`
+below.
+
 ## The five commands
 
 - **`/implement:feature`** — start a feature: brainstorm, confirm the codename,
@@ -30,7 +34,7 @@ the check.
 - **`/implement:check`** — verify a delivery against the plan and the design, on
   any commit range.
 - **`/implement:close`** — the full project gate, the version bump, the final
-  summary; push, pull request and review stay the operator's.
+  summary; push, pull request and review are yours.
 - **`/implement:prepare`** — plan a future feature onto `ROADMAP.md` without
   touching a branch, so it coexists with a feature in progress on another one.
 
@@ -46,10 +50,10 @@ ROADMAP.md               at the repository root: one line per prepared feature
 .implement.json          at the repository root, optional: {"artifacts": "local" | "committed"}
 ```
 
-`/implement:feature` writes all of it; `/implement:phase` and `/implement:close`
-read it. `IMPLEMENTATION.md` carries six header lines — codename, title, branch,
-bump type, artifacts mode, and the commit the branch was cut from — then one row
-per phase:
+`/implement:feature` writes all of it; `/implement:phase`, `/implement:check` and
+`/implement:close` read it. `IMPLEMENTATION.md` carries six header lines — codename,
+title, branch, bump type, artifacts mode, and the commit the branch was cut from —
+then one row per phase:
 
 ```
 | phase | title | status | milestone |
@@ -77,17 +81,22 @@ Optional, at the repository root, one key:
 {"artifacts": "local"}
 ```
 
-**Local, the default** — also what an absent file means. `docs/features/` must be
-ignored, which `/implement:feature`, `/implement:prepare`, `/implement:phase` and
-`/implement:close` verify with `git check-ignore -q docs/features` and refuse to run
-without, naming the fix. Nothing under it, and no `ROADMAP.md`, is
-ever staged; the artifacts are working notes, and a closed feature's own directory
-is deleted by `/implement:close`.
+**Local, the default** — also what an absent file means. Both `docs/features` and
+`ROADMAP.md` must be ignored, which `/implement:feature`, `/implement:prepare`,
+`/implement:phase` and `/implement:close` verify with `git check-ignore -q` on each
+path separately, refusing to run without and naming the fix. Neither is ever
+staged; the artifacts are working notes, and a closed feature's own directory is
+deleted by `/implement:close`, along with its line in `ROADMAP.md`.
 
-**Committed** — `{"artifacts": "committed"}`. The check inverts: the directory must
-not be ignored. The design, the plan and the state travel with the code — in the
-commit that opens the feature, in one commit per finished phase, and in the closing
+**Committed** — `{"artifacts": "committed"}`. The test inverts on both paths, and is
+never simply skipped: neither `docs/features` nor `ROADMAP.md` may be ignored. The
+design, the plan, the state and the roadmap travel with the code — in the commit
+that opens the feature, in one commit per finished phase, and in the closing
 commit — and nothing is deleted at close.
+
+`/implement:phase` and `/implement:close` take `--docs <path>`, and an explicit path
+skips this test altogether: whoever names a directory outside the repository's
+excludes has taken the responsibility for it.
 
 ## CLAUDE.md
 

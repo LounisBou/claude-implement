@@ -489,14 +489,47 @@ export function bandOf(s: Snapshot): Band | null {
   }
 }
 
-export function bandLine(b: Band, columns: number): string {
+export type BandPiece = { text: string; color?: 'warning' | 'success'; bold?: boolean; dim?: boolean }
+
+// The band as styled pieces, the phase title shortened first when the line exceeds the columns.
+export function bandSegments(b: Band, columns: number): BandPiece[] {
   const total = String(b.of).padStart(2, '0')
-  const parts = [
-    `implement:phase ${b.codename}`,
-    b.status === 'done' ? `all ${total} phases done, implement:close is next` : `phase ${b.phase}/${total} ${b.status}: ${b.title}`,
-    ...(b.status !== 'done' && b.milestone ? [`base ${b.milestone}`] : []),
-    `head ${b.head}`,
-  ]
-  const line = parts.join(' · ')
-  return line.length <= columns ? line : `${line.slice(0, Math.max(1, columns - 1))}…`
+  const build = (title: string): BandPiece[] => {
+    const out: BandPiece[] = [{ text: `implement:phase ${b.codename}`, bold: true }]
+    if (b.status === 'done') out.push({ text: ' · ' }, { text: `all ${total} phases done, implement:close is next`, color: 'success' })
+    else {
+      const color = b.status === 'doing' ? 'warning' : undefined
+      out.push({ text: ` · phase ${b.phase}/${total} ` }, color ? { text: b.status, color } : { text: b.status }, { text: `: ${title}` })
+      if (b.milestone) out.push({ text: ` · base ${b.milestone}` })
+    }
+    out.push({ text: ' · ' }, { text: `head ${b.head}`, dim: true })
+    return out
+  }
+  const merge = (ps: BandPiece[]): BandPiece[] => ps.reduce<BandPiece[]>((acc, p) => {
+    const last = acc[acc.length - 1]
+    if (last && last.color === p.color && last.bold === p.bold && last.dim === p.dim) last.text += p.text
+    else acc.push({ ...p })
+    return acc
+  }, [])
+  const length = (ps: BandPiece[]) => ps.reduce((n, p) => n + p.text.length, 0)
+  let pieces = merge(build(b.title))
+  if (length(pieces) > columns && b.status !== 'done') {
+    const over = length(pieces) - columns
+    const keep = Math.max(0, b.title.length - over - 1)
+    pieces = merge(build(`${b.title.slice(0, keep)}…`))
+  }
+  if (length(pieces) <= columns) return pieces
+  let room = Math.max(1, columns - 1)
+  const cut: BandPiece[] = []
+  for (const p of pieces) {
+    if (room <= 0) break
+    cut.push({ ...p, text: p.text.slice(0, room) })
+    room -= p.text.length
+  }
+  cut[cut.length - 1].text += '…'
+  return cut
+}
+
+export function bandLine(b: Band, columns: number): string {
+  return bandSegments(b, columns).map(p => p.text).join('')
 }

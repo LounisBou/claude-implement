@@ -314,9 +314,24 @@ describe('the band pieces', () => {
   })
   test('only a title down to … lets the end of the line go', () => {
     const b = bandOf(s)!
-    const w = 'implement:phase demo · phase 02/03 doing: … · base 9f31a0c · head fedcba9'.length
-    expect(bandLine(b, w)).toBe('implement:phase demo · phase 02/03 doing: … · base 9f31a0c · head fedcba9')
+    const w = 'implement:phase demo · phase 02/03 doing: … · head fedcba9'.length
+    expect(bandLine(b, w)).toBe('implement:phase demo · phase 02/03 doing: … · head fedcba9')
     expect(bandLine(b, w - 3).endsWith('…')).toBe(true)
     expect(bandLine(b, w - 3).length).toBe(w - 3)
+  })
+  test('base gives way before the sha when the title is already down to …', () => {
+    const b = { ...bandOf(s)!, title: 'a title long enough to be shortened on a narrow terminal', milestone: '9f31a0c', head: '1768fa1' }
+    const line = bandLine(b, 60)
+    expect(line.length).toBeLessThanOrEqual(60)
+    expect(line).toContain('head 1768fa1')
+    expect(line).not.toContain('base')
+    expect(line.startsWith('implement:phase demo · phase 02/03 doing: ')).toBe(true)
+  })
+  test('the title gets back the room base frees', () => {
+    const b = bandOf(s)!
+    const withoutBase = 'implement:phase demo · phase 02/03 doing: … · head fedcba9'.length
+    const line = bandLine(b, withoutBase + 3)
+    expect(line).toBe('implement:phase demo · phase 02/03 doing: the… · head fedcba9')
+    expect(line.length).toBe(withoutBase + 3)
   })
 })

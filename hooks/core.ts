@@ -491,16 +491,17 @@ export function bandOf(s: Snapshot): Band | null {
 
 export type BandPiece = { text: string; color?: 'warning' | 'success'; bold?: boolean; dim?: boolean }
 
-// The band as styled pieces, the phase title shortened first when the line exceeds the columns.
+// The band as styled pieces, the phase title shortened first when the line exceeds the columns,
+// then `base` dropped whole to keep the sha, and only then the end of the line.
 export function bandSegments(b: Band, columns: number): BandPiece[] {
   const total = String(b.of).padStart(2, '0')
-  const build = (title: string): BandPiece[] => {
+  const build = (title: string, withBase = true): BandPiece[] => {
     const out: BandPiece[] = [{ text: `implement:phase ${b.codename}`, bold: true }]
     if (b.status === 'done') out.push({ text: ' · ' }, { text: `all ${total} phases done, implement:close is next`, color: 'success' })
     else {
       const color = b.status === 'doing' ? 'warning' : undefined
       out.push({ text: ` · phase ${b.phase}/${total} ` }, color ? { text: b.status, color } : { text: b.status }, { text: `: ${title}` })
-      if (b.milestone) out.push({ text: ` · base ${b.milestone}` })
+      if (b.milestone && withBase) out.push({ text: ` · base ${b.milestone}` })
     }
     out.push({ text: ' · ' }, { text: `head ${b.head}`, dim: true })
     return out
@@ -512,11 +513,16 @@ export function bandSegments(b: Band, columns: number): BandPiece[] {
     return acc
   }, [])
   const length = (ps: BandPiece[]) => ps.reduce((n, p) => n + p.text.length, 0)
+  const shorten = (withBase: boolean): BandPiece[] => {
+    const full = merge(build(b.title, withBase))
+    if (length(full) <= columns) return full
+    const keep = Math.max(0, b.title.length - (length(full) - columns) - 1)
+    return merge(build(`${b.title.slice(0, keep)}…`, withBase))
+  }
   let pieces = merge(build(b.title))
   if (length(pieces) > columns && b.status !== 'done') {
-    const over = length(pieces) - columns
-    const keep = Math.max(0, b.title.length - over - 1)
-    pieces = merge(build(`${b.title.slice(0, keep)}…`))
+    pieces = shorten(true)
+    if (length(pieces) > columns) pieces = shorten(false)
   }
   if (length(pieces) <= columns) return pieces
   let room = Math.max(1, columns - 1)

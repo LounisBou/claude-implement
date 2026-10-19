@@ -360,8 +360,9 @@ export function shellActions(command: string, depth = 0): Action[] {
 export type Guard = { outer: 'feature' | 'prepare' | 'phase' | 'close' | null; checking: boolean; typed: string }
 export const IDLE: Guard = { outer: null, checking: false, typed: '' }
 
-// The user's last prompt is kept across the start: a prompt that asks for the
-// push and names the skill in one breath arms the skill after it was read.
+// The user's last prompt is kept across the start: a prompt that asks for a
+// subagent and names the skill in one breath arms the skill after it was read,
+// and the subagent guard still finds the request.
 export function armedBy(g: Guard, skill: SkillName): Guard {
   if (skill === 'check') return { ...g, checking: true }
   return { outer: skill, checking: false, typed: g.typed }
@@ -394,7 +395,7 @@ export function isVerdict(answer: string): boolean {
 }
 
 // The user's own words that release one refusal: the action named in plain
-// words or by its command.
+// words.
 const ASKED: Record<Action | 'agent', RegExp> = {
   'stage': /\b(stage|commit)/i,
   'commit': /\bcommit/i,

@@ -247,12 +247,12 @@ check "check's plan compliance judges what the delivery claims" "1" \
 echo "== phase =="
 PHASE_DOC="$ROOT/skills/phase/SKILL.md"
 
-# The four NEVER lines are the whole of what this skill refuses. Three of them
+# The three NEVER lines are the whole of what this skill refuses. Two of them
 # would still read as a complete rule, which is why the count is the check and
 # not the presence of the fence. The rule itself lives in a fence, so the heading
 # tracking runs through $FENCE_TRACK: a "## " line shown inside that fence is
 # content the reader is given, not the start of the section after it.
-check "phase's iron rule holds four NEVER lines" "4" \
+check "phase's iron rule holds three NEVER lines" "3" \
   "$(awk "$FENCE_TRACK"'
      !f && /^## The Iron Rule$/ { in_rule = 1; next }
      !f && /^## / { in_rule = 0 }
@@ -392,7 +392,7 @@ check "close's iron rule holds three NEVER lines" "3" \
 # What happens after the branch belongs to the user. Said once: twice reads as a
 # warning, absent it reads as an offer to do it.
 check "close hands the rest back in one sentence" "1" \
-  "$(grep -o 'push, pull request and review are yours' "$CLOSE_DOC" 2>/dev/null | wc -l | tr -d ' ')"
+  "$(grep -o 'a push, a pull request or a merge that your instructions call for is carried out without asking' "$CLOSE_DOC" 2>/dev/null | wc -l | tr -d ' ')"
 
 # A version written into one file and mirrored in another leaves the repository
 # green on the first gate and red on the second. The stop names the file it wrote.
